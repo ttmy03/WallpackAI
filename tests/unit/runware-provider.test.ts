@@ -73,7 +73,6 @@ describe("Runware image provider", () => {
         image: "https://example.test/generated.jpg",
         sourceWidth: 1664,
         sourceHeight: 2496,
-        positivePrompt: "minimalist mountain landscape",
         negativePrompt: "no wall, no frame"
       },
       { taskUUID: "00000000-0000-4000-8000-000000000001" }
@@ -85,7 +84,7 @@ describe("Runware image provider", () => {
     expect(task.inputs.image).toBe("https://example.test/generated.jpg");
     expect(task.targetMegapixels).toBe(8);
     expect(task.settings).toEqual({ enhanceDetails: true, realism: true });
-    expect(task.positivePrompt).toContain("minimalist mountain landscape");
+    expect(task).not.toHaveProperty("positivePrompt");
     expect(task.negativePrompt).toContain(RUNWARE_UPSCALE_NEGATIVE_PROMPT);
     expect(task.negativePrompt).toContain("no wall, no frame");
   });

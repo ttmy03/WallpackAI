@@ -31,7 +31,6 @@ type RunwareUpscaleTask = {
   taskType: "upscale";
   taskUUID: string;
   model: string;
-  positivePrompt: string;
   negativePrompt: string;
   inputs: {
     image: string;
@@ -136,7 +135,6 @@ export class RunwareImageProvider implements ImageProvider {
           outputFormat: task.outputFormat,
           sourceWidth: task.width,
           sourceHeight: task.height,
-          positivePrompt: input.prompt,
           upscaleAirId: this.options.upscaleAirId,
           negativePrompt: input.negativePrompt
         });
@@ -166,7 +164,6 @@ export class RunwareImageProvider implements ImageProvider {
             model: task.model,
             upscaleModel: upscaled.task.model,
             upscaleTargetMegapixels: upscaled.task.targetMegapixels,
-            upscalePositivePrompt: upscaled.task.positivePrompt,
             upscaleNegativePrompt: upscaled.task.negativePrompt
           }
         };
@@ -203,7 +200,6 @@ export function buildRunwareUpscaleTask(
     image: string;
     sourceWidth: number;
     sourceHeight: number;
-    positivePrompt?: string;
     negativePrompt?: string;
     outputFormat?: "JPG" | "PNG" | "WEBP";
   },
@@ -217,7 +213,6 @@ export function buildRunwareUpscaleTask(
     taskType: "upscale",
     taskUUID: options.taskUUID ?? randomUUID(),
     model: options.airId ?? RUNWARE_P_IMAGE_UPSCALE_AIR_ID,
-    positivePrompt: buildUpscalePositivePrompt(input.positivePrompt),
     negativePrompt: buildUpscaleNegativePrompt(input.negativePrompt),
     inputs: {
       image: input.image
@@ -245,7 +240,6 @@ async function upscaleRunwareOutput(input: {
   outputFormat: "JPG" | "PNG" | "WEBP";
   sourceWidth: number;
   sourceHeight: number;
-  positivePrompt?: string;
   upscaleAirId?: string;
   negativePrompt?: string;
 }) {
@@ -255,7 +249,6 @@ async function upscaleRunwareOutput(input: {
       image,
       sourceWidth: input.sourceWidth,
       sourceHeight: input.sourceHeight,
-      positivePrompt: input.positivePrompt,
       negativePrompt: input.negativePrompt,
       outputFormat: input.outputFormat
     },
@@ -304,17 +297,6 @@ async function upscaleRunwareOutput(input: {
       task.targetMegapixels
     )
   };
-}
-
-function buildUpscalePositivePrompt(prompt?: string) {
-  const base =
-    "Upscale this generated wall-art image for print. Preserve the original artwork composition, improve clean detail and texture, and keep it as full-bleed printable artwork only.";
-
-  if (!prompt?.trim()) {
-    return base;
-  }
-
-  return `${base} Original generation prompt: ${prompt.trim()}`;
 }
 
 function buildUpscaleNegativePrompt(negativePrompt?: string) {
