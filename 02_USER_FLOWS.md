@@ -32,17 +32,16 @@
 19. User downloads final ZIP(s).
 20. User opens listing copy and uploads files to Etsy manually.
 
-## Flow B: User reuses a successful style
+## Flow B: User creates a variation from guided presets
 
-1. User opens existing project.
-2. Clicks `Duplicate style`.
-3. The app pre-fills:
+1. User starts a new project.
+2. The app pre-fills guided defaults for:
    - style preset,
    - palette,
    - exclusions,
    - ratio pack settings,
    - listing description structure.
-4. User changes only subject/theme.
+3. User changes only subject/theme.
 5. Generates new previews.
 6. Exports pack.
 

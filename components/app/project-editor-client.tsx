@@ -1,8 +1,14 @@
 "use client";
 
-import { Copy, Loader2, RotateCcw, Sparkles, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  Loader2,
+  RotateCcw,
+  Sparkles,
+  XCircle
+} from "lucide-react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { fetchAuthenticatedApi } from "@/components/app/authenticated-api";
@@ -25,30 +31,31 @@ import {
   CardTitle
 } from "@/components/ui/card";
 import type {
-  DuplicateProjectResponse,
   ProjectDetail,
   RetryGenerationResponse
 } from "@/lib/app/api-types";
 import type { GeneratedArtworkPreview } from "@/lib/jobs/generation-types";
-import { presetKeyToPixels } from "@/lib/print/math";
+import { presetKeyToPixels, upscaleWarning } from "@/lib/print/math";
 import {
   DEFAULT_PRINT_RATIO_KEYS,
-  PRINT_RATIO_PRESETS
+  PRINT_RATIO_PRESETS,
+  type PrintRatioPresetKey
 } from "@/lib/print/presets";
 
 type ActionState = {
   message: string | null;
   error: string | null;
-  pending: "retry" | "cancel" | "duplicate" | null;
+  pending: "retry" | "cancel" | null;
 };
 
 export function ProjectEditorClient({ projectId }: { projectId: string }) {
-  const router = useRouter();
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedArtworkId, setSelectedArtworkId] = useState<string | null>(
     null
   );
+  const [selectedRatioKey, setSelectedRatioKey] =
+    useState<PrintRatioPresetKey>(DEFAULT_PRINT_RATIO_KEYS[0]);
   const [action, setAction] = useState<ActionState>({
     message: null,
     error: null,
@@ -110,6 +117,17 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
   );
   const selectedArtworkSrc =
     selectedArtwork?.dataUrl ?? selectedArtwork?.previewUrl ?? null;
+  const selectedRatioPreset = PRINT_RATIO_PRESETS[selectedRatioKey];
+  const selectedRatioPixels = useMemo(
+    () => presetKeyToPixels(selectedRatioKey),
+    [selectedRatioKey]
+  );
+  const selectedRatioAssessment = selectedArtwork
+    ? getResizeAssessment(
+        { width: selectedArtwork.width, height: selectedArtwork.height },
+        selectedRatioPixels
+      )
+    : null;
 
   async function runAction(
     pending: ActionState["pending"],
@@ -215,27 +233,6 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
             <XCircle />
             Cancel
           </Button>
-          <Button
-            variant="outline"
-            disabled={action.pending !== null}
-            onClick={() =>
-              void runAction("duplicate", "Project duplicated.", async () => {
-                const duplicated =
-                  await fetchAuthenticatedApi<DuplicateProjectResponse>(
-                    `/api/app/projects/${detail.project.id}/duplicate`,
-                    { method: "POST" }
-                  );
-                router.push(`/app/projects/${duplicated.projectId}/editor`);
-              })
-            }
-          >
-            {action.pending === "duplicate" ? (
-              <Loader2 className="animate-spin" />
-            ) : (
-              <Copy />
-            )}
-            Duplicate
-          </Button>
           <Button disabled title="Export backend is not connected yet.">
             <Sparkles />
             Create Etsy Pack
@@ -281,7 +278,12 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
         <section className="min-w-0 rounded-lg border bg-card p-4">
           {selectedArtwork && selectedArtworkSrc ? (
             <figure>
-              <div className="relative aspect-[4/5] overflow-hidden rounded-md bg-secondary">
+              <div
+                className="relative mx-auto max-h-[720px] w-full overflow-hidden rounded-md bg-secondary"
+                style={{
+                  aspectRatio: `${selectedRatioPreset.ratioWidth} / ${selectedRatioPreset.ratioHeight}`
+                }}
+              >
                 <Image
                   src={selectedArtworkSrc}
                   alt="Selected generated wall-art preview"
@@ -291,13 +293,16 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
                 />
                 <div className="absolute left-1/2 top-1/2 size-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-primary shadow-lg" />
                 <div className="absolute bottom-4 left-4 rounded-md bg-black/50 px-3 py-2 text-sm text-white backdrop-blur">
-                  Focal point centered
+                  {selectedRatioPreset.label} · {selectedRatioPixels.width} x{" "}
+                  {selectedRatioPixels.height} px
                 </div>
               </div>
               <figcaption className="mt-4 text-sm text-muted-foreground">
                 Source preview: {selectedArtwork.width} x{" "}
-                {selectedArtwork.height} px. Crop settings are not persisted
-                yet.
+                {selectedArtwork.height} px. Export preview:{" "}
+                {selectedRatioPreset.masterPrintWidthIn} x{" "}
+                {selectedRatioPreset.masterPrintHeightIn} in @{" "}
+                {selectedRatioPreset.targetDpi} DPI.
               </figcaption>
             </figure>
           ) : selectedArtwork ? (
@@ -339,24 +344,71 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
+            <div className="rounded-md border bg-secondary/40 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-medium">{selectedRatioPreset.label}</p>
+                <Badge variant="secondary">{selectedRatioKey}</Badge>
+              </div>
+              <dl className="mt-3 grid gap-2 text-sm">
+                <div>
+                  <dt className="text-muted-foreground">Print Size</dt>
+                  <dd>
+                    {formatInches(selectedRatioPreset.masterPrintWidthIn)} x{" "}
+                    {formatInches(selectedRatioPreset.masterPrintHeightIn)} in @{" "}
+                    {selectedRatioPreset.targetDpi} DPI
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Target file</dt>
+                  <dd className="font-mono">
+                    {selectedRatioPixels.width} x {selectedRatioPixels.height} px
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Filename</dt>
+                  <dd className="break-all font-mono text-xs">
+                    {selectedRatioPreset.fileName}
+                  </dd>
+                </div>
+              </dl>
+              {selectedRatioAssessment ? (
+                <div
+                  className={`mt-4 rounded-md border px-3 py-2 text-sm ${
+                    selectedRatioAssessment.status === "pass"
+                      ? "border-primary/30 bg-primary/10"
+                      : "border-accent/40 bg-accent/10"
+                  }`}
+                >
+                  <div className="flex gap-2">
+                    {selectedRatioAssessment.status === "pass" ? (
+                      <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+                    ) : (
+                      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-accent" />
+                    )}
+                    <p>
+                      {selectedRatioAssessment.message} Resize factor:{" "}
+                      {selectedRatioAssessment.factor.toFixed(2)}x.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+            </div>
             {DEFAULT_PRINT_RATIO_KEYS.map((key) => {
               const preset = PRINT_RATIO_PRESETS[key];
               const pixels = presetKeyToPixels(key);
 
               return (
-                <div key={key} className="rounded-md border p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-medium">{preset.label}</p>
-                    <Badge variant="secondary">{key}</Badge>
-                  </div>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    {preset.masterPrintWidthIn} x {preset.masterPrintHeightIn}{" "}
-                    in @ 300 DPI
-                  </p>
-                  <p className="mt-1 font-mono text-sm">
-                    {pixels.width} x {pixels.height} px
-                  </p>
-                </div>
+                <RatioPreviewButton
+                  key={key}
+                  presetKey={key}
+                  label={preset.label}
+                  printSize={`${formatInches(preset.masterPrintWidthIn)} x ${formatInches(
+                    preset.masterPrintHeightIn
+                  )} in @ ${preset.targetDpi} DPI`}
+                  pixels={`${pixels.width} x ${pixels.height} px`}
+                  selected={selectedRatioKey === key}
+                  onSelect={() => setSelectedRatioKey(key)}
+                />
               );
             })}
             <div className="rounded-md border border-accent/40 bg-accent/10 p-4 text-sm">
@@ -369,6 +421,42 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
         </Card>
       </div>
     </main>
+  );
+}
+
+function RatioPreviewButton({
+  presetKey,
+  label,
+  printSize,
+  pixels,
+  selected,
+  onSelect
+}: {
+  presetKey: PrintRatioPresetKey;
+  label: string;
+  printSize: string;
+  pixels: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onSelect}
+      className={`rounded-md border p-4 text-left transition hover:border-primary hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+        selected ? "border-primary bg-primary/10 ring-2 ring-primary/25" : ""
+      }`}
+    >
+      <span className="flex items-center justify-between gap-3">
+        <span className="font-medium">{label}</span>
+        <Badge variant={selected ? "default" : "secondary"}>{presetKey}</Badge>
+      </span>
+      <span className="mt-2 block text-sm text-muted-foreground">
+        {printSize}
+      </span>
+      <span className="mt-1 block font-mono text-sm">{pixels}</span>
+    </button>
   );
 }
 
@@ -411,4 +499,40 @@ function ArtworkButton({
       </span>
     </button>
   );
+}
+
+function getResizeAssessment(
+  sourcePixels: { width: number; height: number },
+  targetPixels: { width: number; height: number }
+) {
+  const status = upscaleWarning(sourcePixels, targetPixels);
+  const factor =
+    Math.max(targetPixels.width, targetPixels.height) /
+    Math.max(sourcePixels.width, sourcePixels.height);
+
+  if (status === "strong_warning") {
+    return {
+      status,
+      factor,
+      message: "Strong upscale needed. Large prints may lose detail."
+    };
+  }
+
+  if (status === "warning") {
+    return {
+      status,
+      factor,
+      message: "Moderate upscale needed. Review detail before export."
+    };
+  }
+
+  return {
+    status,
+    factor,
+    message: "Source is within a normal resize range."
+  };
+}
+
+function formatInches(value: number) {
+  return Number.isInteger(value) ? value.toString() : value.toFixed(1);
 }

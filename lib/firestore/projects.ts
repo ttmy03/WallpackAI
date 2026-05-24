@@ -59,26 +59,6 @@ export async function createFirestoreProject(input: {
   return project;
 }
 
-export async function duplicateFirestoreProject(input: {
-  userId: string;
-  projectId: string;
-}) {
-  const project = await getFirestoreProjectForUser(
-    input.userId,
-    input.projectId
-  );
-
-  if (!project) {
-    return null;
-  }
-
-  return createFirestoreProject({
-    userId: input.userId,
-    name: `${project.name} copy`,
-    promptInputs: project.promptInputs
-  });
-}
-
 export async function getFirestoreProjectForUser(
   userId: string,
   projectId: string

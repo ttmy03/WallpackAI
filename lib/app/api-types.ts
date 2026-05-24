@@ -30,7 +30,3 @@ export type RetryGenerationResponse = {
   status: GenerationJobView["status"];
   projectId: string;
 };
-
-export type DuplicateProjectResponse = {
-  projectId: string;
-};

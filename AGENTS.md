@@ -97,7 +97,7 @@ docs/
 - Show a warning when a user selects a huge size that may reduce quality.
 - Show exact pixel dimensions before export.
 - Show file-size warnings before Etsy upload pack creation.
-- Provide retry, cancel, and duplicate project actions.
+- Provide retry and cancel project actions.
 
 ## Security rules
 
