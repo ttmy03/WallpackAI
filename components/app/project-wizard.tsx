@@ -16,6 +16,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { fetchAuthenticatedApi } from "@/components/app/authenticated-api";
 import { useFirebaseAuthUser } from "@/components/auth/use-firebase-auth-user";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { ApiResponse } from "@/lib/api-response";
+import type { DashboardSummary } from "@/lib/app/api-types";
+import type { PlanStatus } from "@/lib/billing/plans";
 import type { GenerationJobView } from "@/lib/jobs/generation-types";
 import { presetKeyToPixels } from "@/lib/print/math";
 import {
@@ -81,6 +84,7 @@ const compositionOptions = [
 
 export function ProjectWizard() {
   const { state: authState } = useFirebaseAuthUser();
+  const authUser = authState.status === "ready" ? authState.user : null;
   const [step, setStep] = useState(0);
   const [input, setInput] = useState<PromptInput>(starterInput);
   const [generationJob, setGenerationJob] = useState<GenerationJobView | null>(
@@ -89,6 +93,7 @@ export function ProjectWizard() {
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [isQueueingGeneration, setIsQueueingGeneration] = useState(false);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [planStatus, setPlanStatus] = useState<PlanStatus | null>(null);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const result = useMemo(() => {
@@ -123,6 +128,13 @@ export function ProjectWizard() {
     preset: PRINT_RATIO_PRESETS[key],
     pixels: presetKeyToPixels(key)
   }));
+  const isFreePlan = planStatus?.planKey === "free";
+  const freePreviewBatchesRemaining =
+    planStatus?.previewBatches.remaining ?? null;
+  const freePreviewLimitReached =
+    isFreePlan &&
+    freePreviewBatchesRemaining !== null &&
+    freePreviewBatchesRemaining <= 0;
 
   useEffect(() => {
     return () => {
@@ -131,6 +143,36 @@ export function ProjectWizard() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!authUser) {
+      setPlanStatus(null);
+      return;
+    }
+
+    async function loadPlanStatus() {
+      try {
+        const dashboard =
+          await fetchAuthenticatedApi<DashboardSummary>("/api/app/dashboard");
+
+        if (!cancelled) {
+          setPlanStatus(dashboard.plan);
+        }
+      } catch {
+        if (!cancelled) {
+          setPlanStatus(null);
+        }
+      }
+    }
+
+    void loadPlanStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser]);
 
   const pollGenerationJob = useCallback(async function pollGenerationJob(
     jobId: string,
@@ -159,6 +201,10 @@ export function ProjectWizard() {
           );
         });
       }, 1200);
+    } else {
+      void fetchAuthenticatedApi<DashboardSummary>("/api/app/dashboard")
+        .then((dashboard) => setPlanStatus(dashboard.plan))
+        .catch(() => undefined);
     }
   }, []);
 
@@ -167,7 +213,14 @@ export function ProjectWizard() {
       return;
     }
 
-    if (authState.status !== "ready" || !authState.user) {
+    if (freePreviewLimitReached) {
+      setGenerationError(
+        "The free plan includes 3 preview batches with 2 previews each. Upgrade to create more previews."
+      );
+      return;
+    }
+
+    if (!authUser) {
       setGenerationError("Sign in with Google before generating previews.");
       return;
     }
@@ -181,7 +234,7 @@ export function ProjectWizard() {
     }
 
     try {
-      const token = await authState.user.getIdToken();
+      const token = await authUser.getIdToken();
       const generationBody = activeProjectId
         ? {
             projectId: activeProjectId,
@@ -211,6 +264,7 @@ export function ProjectWizard() {
       }
 
       setActiveProjectId(payload.data.projectId);
+      setPlanStatus((current) => reservePreviewBatch(current));
       await pollGenerationJob(payload.data.jobId, token);
     } catch (error) {
       setGenerationError(
@@ -512,6 +566,25 @@ export function ProjectWizard() {
                   </button>
                 ))}
               </div>
+              {isFreePlan ? (
+                <div className="rounded-lg border bg-secondary/50 p-4 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="font-medium">Free preview batches</p>
+                    <Badge
+                      variant={
+                        freePreviewLimitReached ? "warning" : "secondary"
+                      }
+                    >
+                      {freePreviewBatchesRemaining ?? 0} of{" "}
+                      {planStatus?.previewBatches.limit ?? 3} left
+                    </Badge>
+                  </div>
+                  <p className="mt-2 text-muted-foreground">
+                    Each free batch creates 2 previews. Create Etsy Pack is
+                    unlocked after upgrading.
+                  </p>
+                </div>
+              ) : null}
               <Textarea
                 readOnly
                 value={result.ok ? result.built.prompt : result.message}
@@ -663,7 +736,9 @@ export function ProjectWizard() {
             ) : (
               <Button
                 type="button"
-                disabled={!result.ok || isGenerationRunning}
+                disabled={
+                  !result.ok || isGenerationRunning || freePreviewLimitReached
+                }
                 onClick={handleGenerate}
               >
                 {isGenerationRunning ? (
@@ -673,7 +748,9 @@ export function ProjectWizard() {
                 )}
                 {isGenerationRunning
                   ? "Generating previews"
-                  : "Generate 2 previews - uses 2 credits"}
+                  : freePreviewLimitReached
+                    ? "Free preview limit reached"
+                    : "Generate 2 previews"}
               </Button>
             )}
           </div>
@@ -711,7 +788,13 @@ export function ProjectWizard() {
             />
             <div className="flex flex-wrap gap-2 pt-2">
               <Badge variant="secondary">2 previews</Badge>
-              <Badge variant="secondary">2 credits</Badge>
+              {isFreePlan ? (
+                <Badge variant="secondary">
+                  {freePreviewBatchesRemaining ?? 0} free batches left
+                </Badge>
+              ) : (
+                <Badge variant="secondary">2 credits</Badge>
+              )}
               <Badge variant={result.ok ? "default" : "warning"}>
                 {result.ok ? "Prompt allowed" : "Needs edit"}
               </Badge>
@@ -742,4 +825,21 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
       <span className="min-w-0 truncate font-medium">{value}</span>
     </div>
   );
+}
+
+function reservePreviewBatch(planStatus: PlanStatus | null) {
+  if (!planStatus || planStatus.previewBatches.limit === null) {
+    return planStatus;
+  }
+
+  const used = planStatus.previewBatches.used + 1;
+
+  return {
+    ...planStatus,
+    previewBatches: {
+      ...planStatus.previewBatches,
+      used,
+      remaining: Math.max(0, planStatus.previewBatches.limit - used)
+    }
+  };
 }

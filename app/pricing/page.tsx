@@ -5,6 +5,16 @@ import { Button } from "@/components/ui/button";
 
 const plans = [
   {
+    name: "Free",
+    price: "$0",
+    credits: "3 batches with 2 previews each",
+    features: [
+      "Guided Etsy-safe presets",
+      "6 total preview images",
+      "Upgrade to export Etsy packs"
+    ]
+  },
+  {
     name: "Starter",
     price: "$12",
     credits: "80 credits / month",
@@ -20,7 +30,11 @@ const plans = [
     name: "Batch",
     price: "$79",
     credits: "900 credits / month",
-    features: ["Higher daily limits", "Admin visibility", "Manual credit support"]
+    features: [
+      "Higher daily limits",
+      "Admin visibility",
+      "Manual credit support"
+    ]
   }
 ];
 
@@ -39,7 +53,7 @@ export default function PricingPage() {
           plans define the product surface before checkout is connected.
         </p>
       </div>
-      <div className="mt-10 grid gap-4 lg:grid-cols-3">
+      <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {plans.map((plan) => (
           <div key={plan.name} className="rounded-lg border bg-card p-6">
             <h2 className="text-xl font-semibold">{plan.name}</h2>

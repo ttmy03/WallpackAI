@@ -1,7 +1,16 @@
 "use client";
 
-import { Download, Loader2, Sparkles, XCircle } from "lucide-react";
+import {
+  Check,
+  CreditCard,
+  Download,
+  Loader2,
+  Sparkles,
+  X,
+  XCircle
+} from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -25,10 +34,7 @@ import {
   CardHeader,
   CardTitle
 } from "@/components/ui/card";
-import type {
-  ExportJobResponse,
-  ProjectDetail
-} from "@/lib/app/api-types";
+import type { ExportJobResponse, ProjectDetail } from "@/lib/app/api-types";
 import type { ExportJobView } from "@/lib/jobs/export-types";
 import type { GeneratedArtworkPreview } from "@/lib/jobs/generation-types";
 import { presetKeyToPixels } from "@/lib/print/math";
@@ -59,8 +65,9 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
   const [selectedArtworkId, setSelectedArtworkId] = useState<string | null>(
     null
   );
-  const [selectedRatioKey, setSelectedRatioKey] =
-    useState<PrintRatioPresetKey>(DEFAULT_PRINT_RATIO_KEYS[0]);
+  const [selectedRatioKey, setSelectedRatioKey] = useState<PrintRatioPresetKey>(
+    DEFAULT_PRINT_RATIO_KEYS[0]
+  );
   const [action, setAction] = useState<ActionState>({
     message: null,
     error: null,
@@ -69,6 +76,7 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
   const [activeExportJobId, setActiveExportJobId] = useState<string | null>(
     null
   );
+  const [showExportUpsell, setShowExportUpsell] = useState(false);
 
   const loadProject = useCallback(async () => {
     const projectDetail = await fetchAuthenticatedApi<ProjectDetail>(
@@ -220,7 +228,12 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
   }
 
   async function startExport() {
-    if (!selectedArtwork) {
+    if (!detail || !selectedArtwork) {
+      return;
+    }
+
+    if (!detail.plan.canExportEtsyPack) {
+      setShowExportUpsell(true);
       return;
     }
 
@@ -296,6 +309,11 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
             <Badge variant={projectStatusVariant(detail.project.status)}>
               {detail.project.status}
             </Badge>
+            <Badge
+              variant={detail.plan.planKey === "free" ? "secondary" : "default"}
+            >
+              {detail.plan.label} plan
+            </Badge>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -316,9 +334,11 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
             disabled={!canCreateExport}
             onClick={() => void startExport()}
             title={
-              selectedArtwork
-                ? "Create Etsy upload ZIP files for the selected artwork."
-                : "Generate and select artwork before exporting."
+              !selectedArtwork
+                ? "Generate and select artwork before exporting."
+                : detail.plan.canExportEtsyPack
+                  ? "Create Etsy upload ZIP files for the selected artwork."
+                  : "Open upgrade options for Etsy pack exports."
             }
           >
             {action.pending === "export" || exportRunning ? (
@@ -341,6 +361,10 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
           {action.error}
         </div>
       ) : null}
+      <ExportUpsellDialog
+        open={showExportUpsell}
+        onClose={() => setShowExportUpsell(false)}
+      />
 
       <div className="mt-8 grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)_360px]">
         <Card>
@@ -436,9 +460,7 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
             </div>
           ) : null}
 
-          {latestExportJob ? (
-            <ExportJobPanel job={latestExportJob} />
-          ) : null}
+          {latestExportJob ? <ExportJobPanel job={latestExportJob} /> : null}
         </section>
 
         <Card>
@@ -466,7 +488,8 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
                 <div>
                   <dt className="text-muted-foreground">Target file</dt>
                   <dd className="font-mono">
-                    {selectedRatioPixels.width} x {selectedRatioPixels.height} px
+                    {selectedRatioPixels.width} x {selectedRatioPixels.height}{" "}
+                    px
                   </dd>
                 </div>
                 <div>
@@ -670,7 +693,98 @@ function ExportJobPanel({ job }: { job: ExportJobView }) {
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
 
+function ExportUpsellDialog({
+  open,
+  onClose
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, open]);
+
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm"
+      role="presentation"
+      onClick={onClose}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="export-upsell-title"
+        className="w-full max-w-lg rounded-lg border bg-card p-6 shadow-lg"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <Badge variant="secondary">Free plan</Badge>
+            <h2
+              id="export-upsell-title"
+              className="mt-3 text-2xl font-semibold tracking-normal"
+            >
+              Upgrade to create Etsy packs
+            </h2>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Close upgrade dialog"
+            onClick={onClose}
+          >
+            <X />
+          </Button>
+        </div>
+        <p className="mt-3 text-sm text-muted-foreground">
+          Free includes 3 preview batches with 2 previews each. Etsy upload
+          ZIPs, exact print files, listing copy, and buyer instructions are
+          available on paid plans.
+        </p>
+        <ul className="mt-5 grid gap-3 text-sm">
+          {[
+            "5-ratio print-ready JPG files with real pixel dimensions",
+            "Etsy upload files planned below the 20 MB hard limit",
+            "Listing copy with AI-assisted creation disclosure"
+          ].map((item) => (
+            <li key={item} className="flex gap-2">
+              <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <Button asChild>
+            <Link href="/pricing">
+              <CreditCard />
+              View plans
+            </Link>
+          </Button>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Keep editing
+          </Button>
+        </div>
+      </section>
     </div>
   );
 }

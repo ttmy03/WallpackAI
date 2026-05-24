@@ -1,4 +1,5 @@
 import type { FirebaseSessionUser } from "@/lib/auth/firebase-auth";
+import { normalizePlanKey, type PlanKey } from "@/lib/billing/plans";
 import { getFirebaseFirestore } from "@/lib/firebase/admin";
 import { userDocumentPath } from "@/lib/firestore/collections";
 
@@ -10,6 +11,7 @@ export type FirestoreUser = {
   picture: string | null;
   emailVerified: boolean;
   signInProvider: string | null;
+  planKey: PlanKey;
   onboardingComplete: boolean;
   defaultAiDisclosure: boolean;
   createdAt: string;
@@ -39,6 +41,7 @@ export async function upsertFirestoreUserFromSession(
       picture: sessionUser.picture,
       emailVerified: sessionUser.emailVerified,
       signInProvider: sessionUser.signInProvider,
+      planKey: existing?.planKey ?? "free",
       onboardingComplete: existing?.onboardingComplete ?? false,
       defaultAiDisclosure: existing?.defaultAiDisclosure ?? true,
       createdAt: existing?.createdAt ?? now,
@@ -97,6 +100,7 @@ export function firestoreUserFromDocument(
     picture: nullableString(data.picture),
     emailVerified: data.emailVerified === true,
     signInProvider: nullableString(data.signInProvider),
+    planKey: normalizePlanKey(data.planKey),
     onboardingComplete: data.onboardingComplete === true,
     defaultAiDisclosure: data.defaultAiDisclosure !== false,
     createdAt: stringOrFallback(data.createdAt, new Date(0).toISOString()),

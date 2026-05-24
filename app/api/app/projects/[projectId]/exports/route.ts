@@ -4,6 +4,7 @@ import { z } from "zod";
 import { fail, ok } from "@/lib/api-response";
 import type { ExportJobResponse } from "@/lib/app/api-types";
 import { requireAppUser } from "@/lib/auth/api-auth";
+import { getUserPlanStatus } from "@/lib/billing/plan-usage";
 import { enqueueLocalExportJob } from "@/lib/jobs/local-export-runner";
 import {
   PRINT_RATIO_PRESET_KEYS,
@@ -41,6 +42,18 @@ export async function POST(
         parsed.error.flatten()
       ),
       { status: 400 }
+    );
+  }
+
+  const plan = await getUserPlanStatus(auth.firestoreUser);
+
+  if (!plan.canExportEtsyPack) {
+    return NextResponse.json(
+      fail(
+        "FREE_PLAN_EXPORT_LOCKED",
+        "Create Etsy Pack is available on paid plans. Free accounts can create 3 preview batches with 2 previews each."
+      ),
+      { status: 402 }
     );
   }
 

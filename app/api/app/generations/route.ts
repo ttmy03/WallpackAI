@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { fail, ok } from "@/lib/api-response";
 import { requireAppUser } from "@/lib/auth/api-auth";
+import { canQueuePreviewBatch, previewCountForPlan } from "@/lib/billing/plans";
+import { getUserPlanStatus } from "@/lib/billing/plan-usage";
 import {
   createFirestoreProject,
   getFirestoreProjectForUser
@@ -40,6 +42,22 @@ export async function POST(request: Request) {
   }
 
   const firestoreUser = auth.firestoreUser;
+  const plan = await getUserPlanStatus(firestoreUser);
+
+  if (!canQueuePreviewBatch(plan)) {
+    return NextResponse.json(
+      fail(
+        "FREE_PREVIEW_LIMIT_REACHED",
+        "The free plan includes 3 preview batches with 2 previews each. Upgrade to create more previews."
+      ),
+      { status: 402 }
+    );
+  }
+
+  const previewCount = previewCountForPlan({
+    requestedCount: parsed.data.previewCount,
+    planKey: plan.planKey
+  });
   const project = parsed.data.projectId
     ? await getFirestoreProjectForUser(firestoreUser.id, parsed.data.projectId)
     : await createFirestoreProject({
@@ -63,7 +81,7 @@ export async function POST(request: Request) {
     projectId: project.id,
     projectName: project.name,
     promptInputs: parsed.data.promptInputs,
-    previewCount: parsed.data.previewCount,
+    previewCount,
     quality: parsed.data.quality
   }).catch((error: unknown) => {
     if (error instanceof Error) {

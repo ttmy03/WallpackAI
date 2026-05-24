@@ -1,6 +1,13 @@
 "use client";
 
-import { AlertCircle, ArrowRight, Clock3, Copy, Download } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowRight,
+  Clock3,
+  Copy,
+  Download,
+  Sparkles
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -91,12 +98,15 @@ export function DashboardClient() {
       <section className="mt-8 grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardDescription>Credit balance</CardDescription>
-            <CardTitle className="text-3xl">{data.creditBalance}</CardTitle>
+            <CardDescription>Plan</CardDescription>
+            <CardTitle className="flex items-center gap-2 text-3xl">
+              {data.plan.label} <Sparkles className="size-5 text-primary" />
+            </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            Credits are reserved for preview jobs and committed after provider
-            success.
+            {data.plan.previewBatches.limit === null
+              ? `${data.creditBalance} credits available for preview and export jobs.`
+              : `${data.plan.previewBatches.remaining} of ${data.plan.previewBatches.limit} free preview batches left.`}
           </CardContent>
         </Card>
         <Card>

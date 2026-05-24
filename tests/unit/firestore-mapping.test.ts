@@ -85,6 +85,7 @@ describe("Firestore persistence helpers", () => {
     });
 
     expect(user.id).toBe("firebase-user-1");
+    expect(user.planKey).toBe("free");
     expect(user.defaultAiDisclosure).toBe(true);
   });
 

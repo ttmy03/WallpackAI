@@ -25,10 +25,11 @@ export default function BillingPage() {
             <div>
               <CardTitle>Free beta</CardTitle>
               <CardDescription>
-                Stripe Checkout and Billing Portal are not connected yet.
+                Includes 3 preview batches with 2 previews each. Etsy pack
+                export opens an upgrade prompt.
               </CardDescription>
             </div>
-            <Badge variant="secondary">inactive</Badge>
+            <Badge variant="secondary">free</Badge>
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 sm:flex-row">

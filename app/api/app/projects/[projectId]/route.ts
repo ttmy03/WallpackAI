@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { fail, ok } from "@/lib/api-response";
 import type { ProjectDetail } from "@/lib/app/api-types";
 import { requireAppUser } from "@/lib/auth/api-auth";
+import { getUserPlanStatus } from "@/lib/billing/plan-usage";
 import { listFirestoreExportJobsForUser } from "@/lib/firestore/export-jobs";
 import {
   getFirestoreGenerationJobForUser,
@@ -54,6 +55,7 @@ export async function GET(
     { projectId: project.id, limit: 5 }
   );
   const data: ProjectDetail = {
+    plan: await getUserPlanStatus(auth.firestoreUser),
     project,
     generationJobs,
     latestGenerationJob,

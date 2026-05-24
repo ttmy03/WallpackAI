@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { ok } from "@/lib/api-response";
 import type { DashboardSummary } from "@/lib/app/api-types";
 import { requireAppUser } from "@/lib/auth/api-auth";
+import { getUserPlanStatus } from "@/lib/billing/plan-usage";
 import { listFirestoreExportJobsForUser } from "@/lib/firestore/export-jobs";
 import { listFirestoreGenerationJobsForUser } from "@/lib/firestore/generation-jobs";
 import { listFirestoreProjectsForUser } from "@/lib/firestore/projects";
@@ -27,6 +28,7 @@ export async function GET(request: Request) {
     { limit: 5 }
   );
   const data: DashboardSummary = {
+    plan: await getUserPlanStatus(auth.firestoreUser),
     creditBalance: getLocalCreditBalance(auth.firestoreUser.id),
     recentProjects: recentProjects.slice(0, 5),
     recentGenerationJobs,
