@@ -42,7 +42,7 @@ export const STYLE_PRESETS: Record<StylePresetKey, StylePreset> = {
     key: "boho_botanical",
     label: "Boho Botanical",
     description:
-      "earthy bohemian botanical wall art, dried flowers, organic leaves, natural shapes, warm beige and terracotta accents",
+      "earthy bohemian botanical printable art, dried flowers, organic leaves, natural shapes, warm beige and terracotta accents",
     bestFor: ["bedroom", "nursery", "living room"],
     avoid: ["photorealistic clutter", "logos", "text"]
   },
@@ -50,7 +50,7 @@ export const STYLE_PRESETS: Record<StylePresetKey, StylePreset> = {
     key: "abstract_neutral",
     label: "Abstract Neutral",
     description:
-      "modern abstract wall art with layered organic forms, neutral tones, subtle texture, balanced composition",
+      "modern abstract art print with layered organic forms, neutral tones, subtle texture, balanced composition",
     bestFor: ["living room", "office", "gallery wall"],
     avoid: ["recognizable brand symbols", "letter-like shapes"]
   },
@@ -58,7 +58,7 @@ export const STYLE_PRESETS: Record<StylePresetKey, StylePreset> = {
     key: "nursery_soft",
     label: "Soft Nursery",
     description:
-      "gentle nursery wall art, soft shapes, soothing pastel palette, child-friendly atmosphere, calm and warm",
+      "gentle nursery printable art, soft shapes, soothing pastel palette, child-friendly atmosphere, calm and warm",
     bestFor: ["nursery", "kids room"],
     avoid: ["scary imagery", "sharp contrast", "text"]
   },
@@ -82,7 +82,7 @@ export const STYLE_PRESETS: Record<StylePresetKey, StylePreset> = {
     key: "coastal_calm",
     label: "Coastal Calm",
     description:
-      "calm coastal wall art, soft ocean-inspired palette, airy composition, relaxed beach house decor aesthetic",
+      "calm coastal printable art, soft ocean-inspired palette, airy composition, relaxed beach house decor aesthetic",
     bestFor: ["bathroom", "bedroom", "living room"],
     avoid: ["tourism logos", "text", "busy people"]
   },
@@ -90,7 +90,7 @@ export const STYLE_PRESETS: Record<StylePresetKey, StylePreset> = {
     key: "dark_academia",
     label: "Dark Academia",
     description:
-      "moody scholarly vintage-inspired wall art, deep browns, antique paper tones, classic still life elements, original composition",
+      "moody scholarly vintage-inspired printable art, deep browns, antique paper tones, classic still life elements, original composition",
     bestFor: ["study", "library", "office"],
     avoid: ["readable book text", "specific copyrighted covers"]
   }

@@ -11,8 +11,8 @@ describe("Runware image provider", () => {
   it("uses Seedream 4.5 as the default AIR model", () => {
     const task = buildRunwareImageTask(
       {
-        prompt: "printable wall art",
-        negativePrompt: "text, logo",
+        prompt: "printable art file",
+        negativePrompt: "wall, room, mockup",
         count: 2,
         aspectRatio: "2x3"
       },
@@ -25,7 +25,10 @@ describe("Runware image provider", () => {
     expect(task.width).toBe(1664);
     expect(task.height).toBe(2496);
     expect(task).not.toHaveProperty("negativePrompt");
-    expect(task.positivePrompt).toContain("Avoid: text, logo");
+    expect(task.positivePrompt).toBe("printable art file");
+    expect(task.positivePrompt).not.toContain("Avoid:");
+    expect(task.positivePrompt).not.toContain("wall");
+    expect(task.positivePrompt).not.toContain("mockup");
   });
 
   it("maps common Etsy ratios to Seedream-compatible dimensions", () => {
@@ -65,7 +68,7 @@ describe("Runware image provider", () => {
 
     await expect(
       provider.generate({
-        prompt: "printable wall art",
+        prompt: "printable art file",
         count: 1,
         aspectRatio: "2x3"
       })

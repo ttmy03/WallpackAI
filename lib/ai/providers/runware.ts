@@ -142,9 +142,7 @@ export function buildRunwareImageTask(
     taskType: "imageInference",
     taskUUID: options.taskUUID ?? randomUUID(),
     model: options.airId ?? RUNWARE_SEEDREAM_AIR_ID,
-    positivePrompt: input.negativePrompt
-      ? `${input.prompt}\n\nAvoid: ${input.negativePrompt}`
-      : input.prompt,
+    positivePrompt: input.prompt,
     width: dimensions.width,
     height: dimensions.height,
     numberResults,

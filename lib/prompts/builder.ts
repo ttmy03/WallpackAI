@@ -25,17 +25,16 @@ export function buildWallArtPrompt(input: PromptInput): BuiltPrompt {
   const colors = parsed.customPalette?.trim() || palette.colors.join(", ");
   const ratio = getPrintRatioPreset(parsed.primaryRatio);
   const avoid = [...new Set([...parsed.avoid, ...style.avoid])].join(", ");
-  const niche = parsed.niche ? `${parsed.niche} ` : "";
 
   return {
     primaryRatioLabel: ratio.label,
     negativePrompt: GLOBAL_NEGATIVE_PROMPT,
     prompt: [
-      "Create a high-quality printable wall art image for an Etsy digital download product.",
-      "Generate the artwork itself only as a flat, full-bleed printable image. Do not depict the buyer context, room, frame, wall, poster mockup, product photo, or any surrounding environment.",
+      "Create a high-quality printable art file for an Etsy digital download product.",
+      "Return the source artwork only: a flat, edge-to-edge image that fills the full canvas.",
+      "The image must look like an original digital art file, not a photographed presentation scene or product listing image.",
       "",
       `Subject/theme: an original ${parsed.subject}`,
-      `Target Etsy buyer context only, not visual content: suitable for ${niche}${parsed.room} decor`,
       `Style direction: ${style.description}`,
       `Color palette: ${colors}`,
       `Mood: ${parsed.mood}`,
@@ -43,8 +42,7 @@ export function buildWallArtPrompt(input: PromptInput): BuiltPrompt {
       `Avoid: ${avoid}`,
       "",
       "Output requirements:",
-      "single standalone artwork only, original design, printable wall art, clean composition, central safe area, high detail, tasteful negative space, crisp details, tasteful texture, balanced contrast.",
-      GLOBAL_NEGATIVE_PROMPT
+      "single standalone artwork file, original design, print-ready composition, central safe area, high detail, tasteful negative space, crisp details, tasteful texture, balanced contrast."
     ].join("\n")
   };
 }

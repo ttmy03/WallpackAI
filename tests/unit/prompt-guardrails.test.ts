@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createListingCopy } from "@/lib/etsy/listing-copy";
 import { buildWallArtPrompt, PromptBlockedError } from "@/lib/prompts/builder";
 import { guardPromptInput } from "@/lib/prompts/guardrails";
+import { STYLE_PRESETS, type StylePresetKey } from "@/lib/prompts/presets";
 import type { PromptInput } from "@/lib/prompts/schema";
 
 const safeInput: PromptInput = {
@@ -26,18 +27,31 @@ describe("prompt guardrails and builder", () => {
   it("builds prompts with required exclusions", () => {
     const built = buildWallArtPrompt(safeInput);
 
-    expect(built.prompt).toContain("printable wall art");
+    expect(built.prompt).toContain("printable art file");
     expect(built.prompt).toContain("central 80% safe area");
-    expect(built.prompt).toContain("flat, full-bleed printable image");
-    expect(built.prompt).toContain(
-      "Target Etsy buyer context only, not visual content"
-    );
+    expect(built.prompt).toContain("flat, edge-to-edge image");
     expect(built.prompt).not.toContain("Room/use case");
-    expect(built.prompt).toContain("No text, no words, no letters");
+    expect(built.prompt).not.toContain("living room");
+    expect(built.prompt).not.toMatch(/\bwall\b/i);
+    expect(built.prompt).not.toMatch(/\broom\b/i);
+    expect(built.prompt).not.toMatch(/\bmockup\b/i);
     expect(built.negativePrompt).toContain("no wall");
     expect(built.negativePrompt).toContain("no poster mockup");
     expect(built.negativePrompt).toContain("no photo of a print");
     expect(built.negativePrompt).toContain("no logo");
+  });
+
+  it("keeps display-scene trigger words out of every style prompt", () => {
+    for (const stylePresetKey of Object.keys(STYLE_PRESETS) as StylePresetKey[]) {
+      const built = buildWallArtPrompt({
+        ...safeInput,
+        stylePresetKey
+      });
+
+      expect(built.prompt).not.toMatch(/\bwall\b/i);
+      expect(built.prompt).not.toMatch(/\broom\b/i);
+      expect(built.prompt).not.toMatch(/\bmockup\b/i);
+    }
   });
 
   it("blocks protected franchise prompts", () => {
