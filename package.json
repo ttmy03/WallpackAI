@@ -12,7 +12,8 @@
     "test:e2e": "playwright test",
     "format": "prettier --check .",
     "firebase:use": "firebase use",
-    "firebase:apphosting:create": "firebase apphosting:backends:create --project wallpackai --backend wallpackai-web --primary-region europe-west1 --root-dir . --app 1:352267033614:web:67390d78d670ca5982305f --non-interactive"
+    "firebase:apphosting:create": "firebase apphosting:backends:create --project wallpackai --backend wallpackai-web --primary-region europe-west4 --root-dir . --app 1:352267033614:web:96670cd407b5092682305f --non-interactive",
+    "firebase:apphosting:rollout": "firebase apphosting:rollouts:create wallpackai-web --project wallpackai --git-branch main --force"
   },
   "dependencies": {
     "@radix-ui/react-slot": "latest",
