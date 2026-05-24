@@ -28,6 +28,13 @@ export async function POST(request: Request) {
     );
   }
 
+  if (!user.emailVerified) {
+    return NextResponse.json(
+      fail("EMAIL_NOT_VERIFIED", "Confirm your email before creating projects."),
+      { status: 403 }
+    );
+  }
+
   const json: unknown = await request.json();
   const parsed = createProjectSchema.safeParse(json);
 

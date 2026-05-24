@@ -15,6 +15,14 @@ describe("Firebase Auth error messages", () => {
     ).toBe("This domain is not authorized in Firebase Authentication.");
   });
 
+  it("explains unauthorized email verification return URLs", () => {
+    expect(
+      getFriendlyFirebaseAuthError({ code: "auth/unauthorized-continue-uri" })
+    ).toBe(
+      "The email verification return URL is not authorized in Firebase Authentication."
+    );
+  });
+
   it("keeps unknown Firebase error codes visible", () => {
     expect(getFriendlyFirebaseAuthError({ code: "auth/example-failure" })).toBe(
       "Firebase could not complete this request (auth/example-failure)."

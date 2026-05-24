@@ -2,6 +2,7 @@
 
 import {
   createUserWithEmailAndPassword,
+  sendEmailVerification,
   signInWithEmailAndPassword
 } from "firebase/auth";
 import { useRouter } from "next/navigation";
@@ -11,7 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getFriendlyFirebaseAuthError } from "@/lib/firebase/auth-errors";
-import { getFirebaseClientAnalytics, getFirebaseClientAuth } from "@/lib/firebase/client";
+import {
+  getFirebaseClientAnalytics,
+  getFirebaseClientAuth
+} from "@/lib/firebase/client";
+import { getEmailVerificationActionCodeSettings } from "@/lib/firebase/email-verification";
 
 type FirebaseEmailFormProps = {
   mode: "sign-in" | "sign-up";
@@ -21,25 +26,39 @@ export function FirebaseEmailForm({ mode }: FirebaseEmailFormProps) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setMessage(null);
     setIsSubmitting(true);
 
     try {
       const auth = getFirebaseClientAuth();
 
       if (mode === "sign-up") {
-        await createUserWithEmailAndPassword(auth, email, password);
+        const credential = await createUserWithEmailAndPassword(
+          auth,
+          email,
+          password
+        );
+        await sendEmailVerification(
+          credential.user,
+          getEmailVerificationActionCodeSettings(window.location.origin)
+        );
+        setPassword("");
+        setMessage(
+          "Account created. We sent a verification email; confirm it before opening the workspace."
+        );
       } else {
         await signInWithEmailAndPassword(auth, email, password);
+        router.push("/app");
       }
 
       void getFirebaseClientAnalytics();
-      router.push("/app");
     } catch (caughtError) {
       setError(getFriendlyFirebaseAuthError(caughtError));
     } finally {
@@ -68,7 +87,9 @@ export function FirebaseEmailForm({ mode }: FirebaseEmailFormProps) {
           type="password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          autoComplete={mode === "sign-up" ? "new-password" : "current-password"}
+          autoComplete={
+            mode === "sign-up" ? "new-password" : "current-password"
+          }
           minLength={6}
           required
         />
@@ -76,6 +97,11 @@ export function FirebaseEmailForm({ mode }: FirebaseEmailFormProps) {
       {error ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
+        </p>
+      ) : null}
+      {message ? (
+        <p className="rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-sm text-primary">
+          {message}
         </p>
       ) : null}
       <Button className="w-full" type="submit" disabled={isSubmitting}>

@@ -19,6 +19,10 @@ export function getFriendlyFirebaseAuthError(error: unknown) {
       return "Firebase Auth sign-ups are restricted for this project.";
     case "auth/unauthorized-domain":
       return "This domain is not authorized in Firebase Authentication.";
+    case "auth/unauthorized-continue-uri":
+      return "The email verification return URL is not authorized in Firebase Authentication.";
+    case "auth/invalid-continue-uri":
+      return "The email verification return URL is invalid.";
     case "auth/invalid-api-key":
     case "auth/api-key-not-valid.-please-pass-a-valid-api-key.":
       return "The Firebase web API key is not valid for this app.";

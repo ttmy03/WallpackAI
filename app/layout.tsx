@@ -3,7 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
 
-import { Button } from "@/components/ui/button";
+import { AuthNav } from "@/components/auth/auth-nav";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -45,7 +45,10 @@ export default function RootLayout({
               </span>
             </Link>
             <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
-              <Link href="/pricing" className="transition hover:text-foreground">
+              <Link
+                href="/pricing"
+                className="transition hover:text-foreground"
+              >
                 Pricing
               </Link>
               <Link
@@ -58,14 +61,7 @@ export default function RootLayout({
                 Dashboard
               </Link>
             </nav>
-            <div className="flex items-center gap-2">
-              <Button asChild variant="ghost" className="hidden sm:inline-flex">
-                <Link href="/auth/sign-in">Sign in</Link>
-              </Button>
-              <Button asChild>
-                <Link href="/app/new">Start creating</Link>
-              </Button>
-            </div>
+            <AuthNav />
           </div>
         </header>
         {children}

@@ -3,8 +3,17 @@ import { getFirebaseAuth } from "@/lib/firebase/admin";
 export type FirebaseSessionUser = {
   firebaseUid: string;
   email: string | null;
+  emailVerified: boolean;
   name: string | null;
   picture: string | null;
+};
+
+type DecodedFirebaseUser = {
+  uid: string;
+  email?: unknown;
+  email_verified?: unknown;
+  name?: unknown;
+  picture?: unknown;
 };
 
 export function extractBearerToken(request: Request): string | null {
@@ -29,9 +38,16 @@ export async function getFirebaseUserFromRequest(
 
   const decoded = await getFirebaseAuth().verifyIdToken(token);
 
+  return mapDecodedFirebaseUser(decoded);
+}
+
+export function mapDecodedFirebaseUser(
+  decoded: DecodedFirebaseUser
+): FirebaseSessionUser {
   return {
     firebaseUid: decoded.uid,
-    email: decoded.email ?? null,
+    email: typeof decoded.email === "string" ? decoded.email : null,
+    emailVerified: decoded.email_verified === true,
     name: typeof decoded.name === "string" ? decoded.name : null,
     picture: typeof decoded.picture === "string" ? decoded.picture : null
   };

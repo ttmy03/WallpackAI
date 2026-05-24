@@ -14,6 +14,8 @@ This project is a Next.js App Router app with API routes, so Firebase App Hostin
   `projects/wallpackai/locations/europe-west4/backends/wallpackai-web`
 - Backend URL:
   `https://wallpackai-web--wallpackai.europe-west4.hosted.app`
+- `NEXT_PUBLIC_APP_URL` is set in `apphosting.yaml` to the Backend URL so
+  Firebase Auth email verification returns users to the deployed app.
 - GitHub repo exists and is pushed:
   `https://github.com/ttmy03/WallpackAI`
 - GitHub is connected to the App Hosting backend through Developer Connect:

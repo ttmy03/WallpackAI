@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+import { AuthGate } from "@/components/auth/auth-gate";
 import { Button } from "@/components/ui/button";
 
 const navItems = [
@@ -43,7 +44,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ))}
           </nav>
         </aside>
-        <div className="min-w-0 py-6 lg:pl-8">{children}</div>
+        <div className="min-w-0 py-6 lg:pl-8">
+          <AuthGate>{children}</AuthGate>
+        </div>
       </div>
     </div>
   );
