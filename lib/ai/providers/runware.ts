@@ -5,6 +5,11 @@ import type {
   GenerateImageInput,
   ImageProvider
 } from "@/lib/ai/image-provider";
+import type {
+  UpscaledImage,
+  UpscaleImageInput,
+  UpscaleProvider
+} from "@/lib/ai/upscale-provider";
 
 export const RUNWARE_GPT_IMAGE_AIR_ID = "openai:gpt-image@2";
 export const RUNWARE_P_IMAGE_UPSCALE_AIR_ID = "prunaai:p-image@upscale";
@@ -70,7 +75,6 @@ export class RunwareImageProvider implements ImageProvider {
       apiKey?: string;
       apiUrl?: string;
       airId?: string;
-      upscaleAirId?: string;
       fetcher?: typeof fetch;
     } = {}
   ) {}
@@ -124,46 +128,118 @@ export class RunwareImageProvider implements ImageProvider {
 
     return Promise.all(
       outputs.map(async (output) => {
-        const upscaled = await upscaleRunwareOutput({
-          output,
-          apiKey,
-          fetcher,
-          apiUrl: this.options.apiUrl ?? process.env.RUNWARE_API_URL,
-          outputFormat: task.outputFormat,
-          sourceWidth: task.width,
-          sourceHeight: task.height,
-          upscaleAirId: this.options.upscaleAirId
-        });
-        const bytes = await downloadRunwareImage(upscaled.output, fetcher);
+        const bytes = await downloadRunwareImage(output, fetcher);
         const mimeType = mimeTypeFromBytes(bytes);
 
         return {
           bytes,
           mimeType,
-          width: upscaled.width,
-          height: upscaled.height,
-          providerRequestId:
-            upscaled.output.imageUUID ??
-            output.imageUUID ??
-            upscaled.output.taskUUID,
+          width: task.width,
+          height: task.height,
+          providerRequestId: output.imageUUID ?? output.taskUUID,
           usage: {
-            taskUUID: upscaled.output.taskUUID,
+            taskUUID: output.taskUUID,
             generationTaskUUID: output.taskUUID,
             generationImageUUID: output.imageUUID,
-            upscaleTaskUUID: upscaled.output.taskUUID,
-            upscaleImageUUID: upscaled.output.imageUUID,
             seed: output.seed,
             generationCost: output.cost,
-            upscaleCost: upscaled.output.cost,
-            cost: sumOptionalNumbers(output.cost, upscaled.output.cost),
+            cost: output.cost,
             NSFWContent: output.NSFWContent,
-            model: task.model,
-            upscaleModel: upscaled.task.model,
-            upscaleTargetMegapixels: upscaled.task.targetMegapixels
+            model: task.model
           }
         };
       })
     );
+  }
+}
+
+export class RunwareUpscaleProvider implements UpscaleProvider {
+  constructor(
+    private readonly options: {
+      apiKey?: string;
+      apiUrl?: string;
+      airId?: string;
+      fetcher?: typeof fetch;
+    } = {}
+  ) {}
+
+  async upscale(input: UpscaleImageInput): Promise<UpscaledImage> {
+    const apiKey = this.options.apiKey ?? process.env.RUNWARE_API_KEY;
+
+    if (!apiKey) {
+      throw new Error("RUNWARE_API_KEY is required for Runware upscaling");
+    }
+
+    const task = buildRunwareUpscaleTask(
+      {
+        image: imageBytesToDataUri(input.bytes, input.mimeType),
+        sourceWidth: input.width,
+        sourceHeight: input.height,
+        outputFormat: "JPG"
+      },
+      {
+        airId:
+          this.options.airId ??
+          process.env.RUNWARE_UPSCALE_AIR_ID ??
+          RUNWARE_P_IMAGE_UPSCALE_AIR_ID,
+        targetMegapixels: readUpscaleTargetMegapixels()
+      }
+    );
+    const fetcher = this.options.fetcher ?? fetch;
+    const response = await fetcher(
+      this.options.apiUrl ?? process.env.RUNWARE_API_URL ?? RUNWARE_API_URL,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`
+        },
+        body: JSON.stringify([task])
+      }
+    );
+
+    if (!response.ok) {
+      const message = await readRunwareHttpError(response);
+      throw new Error(
+        `Runware upscale request failed with HTTP ${response.status}: ${message}`
+      );
+    }
+
+    const json = (await response.json()) as RunwareImageResponse;
+
+    if (json.errors?.length) {
+      throw new Error(formatRunwareErrors(json.errors));
+    }
+
+    const output = json.data?.[0];
+
+    if (!output) {
+      throw new Error("Runware upscale did not return an image");
+    }
+
+    const bytes = await downloadRunwareImage(output, fetcher);
+    const dimensions = dimensionsFromMegapixels(
+      input.width,
+      input.height,
+      task.targetMegapixels
+    );
+
+    return {
+      bytes,
+      mimeType: mimeTypeFromBytes(bytes),
+      width: dimensions.width,
+      height: dimensions.height,
+      providerRequestId: output.imageUUID ?? output.taskUUID,
+      usage: {
+        taskUUID: output.taskUUID,
+        upscaleTaskUUID: output.taskUUID,
+        upscaleImageUUID: output.imageUUID,
+        upscaleCost: output.cost,
+        cost: output.cost,
+        model: task.model,
+        upscaleTargetMegapixels: task.targetMegapixels
+      }
+    };
   }
 }
 
@@ -225,97 +301,6 @@ export function buildRunwareUpscaleTask(
   };
 }
 
-async function upscaleRunwareOutput(input: {
-  output: NonNullable<RunwareImageResponse["data"]>[number];
-  apiKey: string;
-  fetcher: typeof fetch;
-  apiUrl?: string;
-  outputFormat: "JPG" | "PNG" | "WEBP";
-  sourceWidth: number;
-  sourceHeight: number;
-  upscaleAirId?: string;
-}) {
-  const image = runwareOutputToImageInput(input.output);
-  const task = buildRunwareUpscaleTask(
-    {
-      image,
-      sourceWidth: input.sourceWidth,
-      sourceHeight: input.sourceHeight,
-      outputFormat: input.outputFormat
-    },
-    {
-      airId:
-        input.upscaleAirId ??
-        process.env.RUNWARE_UPSCALE_AIR_ID ??
-        RUNWARE_P_IMAGE_UPSCALE_AIR_ID,
-      targetMegapixels: readUpscaleTargetMegapixels()
-    }
-  );
-  const response = await input.fetcher(input.apiUrl ?? RUNWARE_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${input.apiKey}`
-    },
-    body: JSON.stringify([task])
-  });
-
-  if (!response.ok) {
-    const message = await readRunwareHttpError(response);
-    throw new Error(
-      `Runware upscale request failed with HTTP ${response.status}: ${message}`
-    );
-  }
-
-  const json = (await response.json()) as RunwareImageResponse;
-
-  if (json.errors?.length) {
-    throw new Error(formatRunwareErrors(json.errors));
-  }
-
-  const upscaledOutput = json.data?.[0];
-
-  if (!upscaledOutput) {
-    throw new Error("Runware upscale did not return an image");
-  }
-
-  return {
-    output: upscaledOutput,
-    task,
-    ...dimensionsFromMegapixels(
-      input.sourceWidth,
-      input.sourceHeight,
-      task.targetMegapixels
-    )
-  };
-}
-
-function runwareOutputToImageInput(
-  output: NonNullable<RunwareImageResponse["data"]>[number]
-) {
-  const image =
-    output.imageURL ??
-    output.imageDataURI ??
-    output.imageBase64Data ??
-    output.imageUUID;
-
-  if (!image) {
-    throw new Error("Runware response did not include an image for upscaling");
-  }
-
-  return image;
-}
-
-function readUpscaleTargetMegapixels() {
-  const value = Number(process.env.RUNWARE_UPSCALE_TARGET_MEGAPIXELS);
-
-  if (!Number.isFinite(value)) {
-    return undefined;
-  }
-
-  return clampInteger(value, 1, 8);
-}
-
 function resolveUpscaleTargetMegapixels(
   sourceWidth: number,
   sourceHeight: number
@@ -327,6 +312,16 @@ function resolveUpscaleTargetMegapixels(
   }
 
   return clampInteger(Math.max(Math.ceil(sourceMegapixels), 8), 1, 8);
+}
+
+function readUpscaleTargetMegapixels() {
+  const value = Number(process.env.RUNWARE_UPSCALE_TARGET_MEGAPIXELS);
+
+  if (!Number.isFinite(value)) {
+    return undefined;
+  }
+
+  return clampInteger(value, 1, 8);
 }
 
 function dimensionsFromMegapixels(
@@ -346,17 +341,11 @@ function dimensionsFromMegapixels(
   return { width, height };
 }
 
-function sumOptionalNumbers(...values: Array<number | undefined>) {
-  const finiteValues = values.filter(
-    (value): value is number =>
-      typeof value === "number" && Number.isFinite(value)
-  );
-
-  if (finiteValues.length === 0) {
-    return undefined;
-  }
-
-  return finiteValues.reduce((sum, value) => sum + (value ?? 0), 0);
+function imageBytesToDataUri(
+  bytes: Uint8Array,
+  mimeType: UpscaleImageInput["mimeType"]
+) {
+  return `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`;
 }
 
 function formatRunwareErrors(

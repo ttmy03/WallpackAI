@@ -3,6 +3,7 @@
 import {
   AlertTriangle,
   Check,
+  Download,
   Loader2,
   RotateCcw,
   Sparkles,
@@ -17,6 +18,7 @@ import {
   AppLoadingState
 } from "@/components/app/dashboard-client";
 import {
+  exportStatusVariant,
   formatAppDate,
   generationStatusVariant,
   projectStatusVariant
@@ -31,9 +33,11 @@ import {
   CardTitle
 } from "@/components/ui/card";
 import type {
+  ExportJobResponse,
   ProjectDetail,
   RetryGenerationResponse
 } from "@/lib/app/api-types";
+import type { ExportJobView } from "@/lib/jobs/export-types";
 import type { GeneratedArtworkPreview } from "@/lib/jobs/generation-types";
 import { presetKeyToPixels, upscaleWarning } from "@/lib/print/math";
 import {
@@ -47,8 +51,14 @@ import {
 type ActionState = {
   message: string | null;
   error: string | null;
-  pending: "retry" | "cancel" | null;
+  pending: "retry" | "cancel" | "export" | "retryExport" | null;
 };
+
+const TERMINAL_EXPORT_STATUSES = new Set<ExportJobView["status"]>([
+  "succeeded",
+  "failed",
+  "cancelled"
+]);
 
 export function ProjectEditorClient({ projectId }: { projectId: string }) {
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
@@ -63,6 +73,9 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     error: null,
     pending: null
   });
+  const [activeExportJobId, setActiveExportJobId] = useState<string | null>(
+    null
+  );
 
   const loadProject = useCallback(async () => {
     const projectDetail = await fetchAuthenticatedApi<ProjectDetail>(
@@ -116,6 +129,61 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     };
   }, [projectId]);
 
+  useEffect(() => {
+    const jobId =
+      activeExportJobId ??
+      (detail?.latestExportJob &&
+      !TERMINAL_EXPORT_STATUSES.has(detail.latestExportJob.status)
+        ? detail.latestExportJob.jobId
+        : null);
+
+    if (!jobId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function pollExportJob() {
+      try {
+        const job = await fetchAuthenticatedApi<ExportJobView>(
+          `/api/app/export-jobs/${jobId}`
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        setDetail((current) => mergeExportJob(current, job));
+
+        if (TERMINAL_EXPORT_STATUSES.has(job.status)) {
+          setActiveExportJobId(null);
+          await loadProject();
+        }
+      } catch (caughtError) {
+        if (!cancelled) {
+          setAction({
+            message: null,
+            error:
+              caughtError instanceof Error
+                ? caughtError.message
+                : "Export status could not be refreshed.",
+            pending: null
+          });
+        }
+      }
+    }
+
+    void pollExportJob();
+    const interval = window.setInterval(() => {
+      void pollExportJob();
+    }, 2500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [activeExportJobId, detail?.latestExportJob, loadProject]);
+
   const selectedArtwork = useMemo(
     () =>
       detail?.artworks.find(
@@ -164,11 +232,49 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     }
   }
 
+  async function startExport() {
+    if (!selectedArtwork) {
+      return;
+    }
+
+    await runAction("export", "Export job queued.", async () => {
+      const result = await fetchAuthenticatedApi<ExportJobResponse>(
+        `/api/app/projects/${projectId}/exports`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            artworkId: selectedArtwork.artworkId,
+            ratioKeys: projectRatioKeys
+          })
+        }
+      );
+      setActiveExportJobId(result.jobId);
+      await loadProject();
+    });
+  }
+
+  async function retryExport(jobId: string) {
+    await runAction("retryExport", "Export retry queued.", async () => {
+      const result = await fetchAuthenticatedApi<ExportJobResponse>(
+        `/api/app/export-jobs/${jobId}/retry`,
+        { method: "POST" }
+      );
+      setActiveExportJobId(result.jobId);
+      await loadProject();
+    });
+  }
+
   const latestJob =
     detail?.latestGenerationJob ?? detail?.generationJobs[0] ?? null;
+  const latestExportJob =
+    detail?.latestExportJob ?? detail?.exportJobs[0] ?? null;
   const canRetry = latestJob?.status === "failed" && latestJob.retryable;
   const canCancel =
     latestJob?.status === "queued" || latestJob?.status === "validating";
+  const exportRunning =
+    latestExportJob && !TERMINAL_EXPORT_STATUSES.has(latestExportJob.status);
+  const canCreateExport =
+    Boolean(selectedArtwork) && !exportRunning && action.pending === null;
 
   if (loadError) {
     return (
@@ -246,8 +352,20 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
             <XCircle />
             Cancel
           </Button>
-          <Button disabled title="Export backend is not connected yet.">
-            <Sparkles />
+          <Button
+            disabled={!canCreateExport}
+            onClick={() => void startExport()}
+            title={
+              selectedArtwork
+                ? "Create Etsy upload ZIP files for the selected artwork."
+                : "Generate and select artwork before exporting."
+            }
+          >
+            {action.pending === "export" || exportRunning ? (
+              <Loader2 className="animate-spin" />
+            ) : (
+              <Sparkles />
+            )}
             Create Etsy Pack
           </Button>
         </div>
@@ -357,6 +475,14 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
               ) : null}
             </div>
           ) : null}
+
+          {latestExportJob ? (
+            <ExportJobPanel
+              job={latestExportJob}
+              pending={action.pending}
+              onRetry={() => void retryExport(latestExportJob.jobId)}
+            />
+          ) : null}
         </section>
 
         <Card>
@@ -434,12 +560,31 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
                 />
               );
             })}
-            <div className="rounded-md border border-accent/40 bg-accent/10 p-4 text-sm">
-              <div className="flex gap-2">
-                <XCircle className="mt-0.5 size-4 shrink-0 text-accent" />
-                <p>File-size estimates require the export backend.</p>
+            {latestExportJob?.files.length ? (
+              <div className="rounded-md border p-4 text-sm">
+                <p className="font-medium">Last export files</p>
+                <div className="mt-3 grid gap-2">
+                  {latestExportJob.files.map((file) => (
+                    <div
+                      key={file.fileName}
+                      className="flex items-center justify-between gap-3"
+                    >
+                      <span className="font-mono text-xs">{file.fileName}</span>
+                      <span className="text-muted-foreground">
+                        {formatBytes(file.bytes)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="rounded-md border border-accent/40 bg-accent/10 p-4 text-sm">
+                <div className="flex gap-2">
+                  <XCircle className="mt-0.5 size-4 shrink-0 text-accent" />
+                  <p>Create an Etsy pack to calculate real file sizes.</p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -532,6 +677,94 @@ function ArtworkButton({
   );
 }
 
+function ExportJobPanel({
+  job,
+  pending,
+  onRetry
+}: {
+  job: ExportJobView;
+  pending: ActionState["pending"];
+  onRetry: () => void;
+}) {
+  const running = !TERMINAL_EXPORT_STATUSES.has(job.status);
+  const canRetry = job.status === "failed" && job.retryable;
+
+  return (
+    <div className="mt-4 rounded-md border p-4 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="font-medium">Latest export job</p>
+          <p className="mt-1 text-muted-foreground">
+            {job.stage ?? "queued"} · {job.creditCost} credits ·{" "}
+            {formatAppDate(job.createdAt)}
+          </p>
+        </div>
+        <Badge variant={exportStatusVariant(job.status)}>{job.status}</Badge>
+      </div>
+
+      {running ? (
+        <div className="mt-4 flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" />
+          Creating print files and Etsy ZIPs.
+        </div>
+      ) : null}
+
+      {job.errorMessage ? (
+        <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-destructive">
+          {job.errorMessage}
+        </p>
+      ) : null}
+
+      {job.warnings.length > 0 ? (
+        <div className="mt-3 rounded-md border border-accent/40 bg-accent/10 px-3 py-2">
+          {job.warnings.map((warning) => (
+            <p key={warning}>{warning}</p>
+          ))}
+        </div>
+      ) : null}
+
+      {job.artifacts.length > 0 ? (
+        <div className="mt-4 grid gap-2">
+          {job.artifacts.map((artifact) => (
+            <Button
+              key={artifact.artifactId}
+              asChild
+              variant="outline"
+              size="sm"
+              className="justify-between"
+            >
+              <a href={artifact.downloadUrl} target="_blank" rel="noreferrer">
+                <span className="truncate">{artifact.fileName}</span>
+                <span className="inline-flex items-center gap-2 text-muted-foreground">
+                  {formatBytes(artifact.bytes)}
+                  <Download />
+                </span>
+              </a>
+            </Button>
+          ))}
+        </div>
+      ) : null}
+
+      {canRetry ? (
+        <Button
+          className="mt-4"
+          variant="outline"
+          size="sm"
+          disabled={pending !== null}
+          onClick={onRetry}
+        >
+          {pending === "retryExport" ? (
+            <Loader2 className="animate-spin" />
+          ) : (
+            <RotateCcw />
+          )}
+          Retry export
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 function getResizeAssessment(
   sourcePixels: { width: number; height: number },
   targetPixels: { width: number; height: number }
@@ -572,4 +805,32 @@ function getProjectRatioKeys(detail: ProjectDetail) {
 
 function formatInches(value: number) {
   return Number.isInteger(value) ? value.toString() : value.toFixed(1);
+}
+
+function mergeExportJob(
+  detail: ProjectDetail | null,
+  job: ExportJobView
+): ProjectDetail | null {
+  if (!detail) {
+    return detail;
+  }
+
+  const exportJobs = [
+    job,
+    ...detail.exportJobs.filter((candidate) => candidate.jobId !== job.jobId)
+  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  return {
+    ...detail,
+    exportJobs,
+    latestExportJob: exportJobs[0] ?? null
+  };
+}
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 MB";
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

@@ -94,7 +94,7 @@ describe("Runware image provider", () => {
     expect(task).not.toHaveProperty("negativePrompt");
   });
 
-  it("runs GPT Image 2 generation and then P-Image Upscale", async () => {
+  it("runs GPT Image 2 generation without P-Image Upscale", async () => {
     const requests: unknown[] = [];
     const provider = new RunwareImageProvider({
       apiKey: "test-key",
@@ -109,28 +109,14 @@ describe("Runware image provider", () => {
         const body = JSON.parse(String(init?.body)) as unknown[];
         requests.push(body[0]);
 
-        if (requests.length === 1) {
-          return Response.json({
-            data: [
-              {
-                taskType: "imageInference",
-                taskUUID: "generation-task",
-                imageUUID: "generated-image",
-                imageURL: "https://image.test/generated.jpg",
-                cost: 0.1
-              }
-            ]
-          });
-        }
-
         return Response.json({
           data: [
             {
-              taskType: "upscale",
-              taskUUID: "upscale-task",
-              imageUUID: "upscaled-image",
-              imageURL: "https://image.test/upscaled.jpg",
-              cost: 0.01
+              taskType: "imageInference",
+              taskUUID: "generation-task",
+              imageUUID: "generated-image",
+              imageURL: "https://image.test/generated.jpg",
+              cost: 0.1
             }
           ]
         });
@@ -144,24 +130,17 @@ describe("Runware image provider", () => {
       aspectRatio: "2x3"
     });
 
-    expect(requests).toHaveLength(2);
+    expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({
       taskType: "imageInference",
       model: RUNWARE_GPT_IMAGE_AIR_ID
     });
-    expect(requests[1]).toMatchObject({
-      taskType: "upscale",
-      model: RUNWARE_P_IMAGE_UPSCALE_AIR_ID,
-      inputs: { image: "https://image.test/generated.jpg" },
-      targetMegapixels: 8
-    });
-    expect(requests[1]).not.toHaveProperty("negativePrompt");
-    expect(images[0]?.providerRequestId).toBe("upscaled-image");
+    expect(images[0]?.providerRequestId).toBe("generated-image");
     expect(images[0]?.usage?.generationTaskUUID).toBe("generation-task");
-    expect(images[0]?.usage?.upscaleTaskUUID).toBe("upscale-task");
-    expect(images[0]?.usage?.upscaleModel).toBe(RUNWARE_P_IMAGE_UPSCALE_AIR_ID);
-    expect(images[0]?.width).toBeGreaterThan(1664);
-    expect(images[0]?.height).toBeGreaterThan(2496);
+    expect(images[0]?.usage).not.toHaveProperty("upscaleTaskUUID");
+    expect(images[0]?.usage).not.toHaveProperty("upscaleModel");
+    expect(images[0]?.width).toBe(1664);
+    expect(images[0]?.height).toBe(2496);
   });
 
   it("surfaces Runware HTTP error details without hiding them behind the status", async () => {

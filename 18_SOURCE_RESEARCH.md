@@ -142,7 +142,7 @@ Key implementation notes:
 - P-Image Upscale AIR ID is `prunaai:p-image@upscale`.
 - GPT Image 2 text-to-image requests should specify explicit `width` and `height`.
 - GPT Image 2 dimensions use 16 px steps, 480-3840 px sides, 655,360-8,294,400 total pixels, and a maximum 3:1 aspect ratio.
-- P-Image Upscale is run after generation and receives both prompt and negative prompt cleanup guidance.
+- P-Image Upscale is reserved for export/pack creation. It should not receive prompt or negative prompt cleanup fields.
 - Store Runware `taskUUID` and `imageUUID` for support.
 
 URLs:

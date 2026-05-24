@@ -1,5 +1,6 @@
 import { getFirebaseStorage } from "@/lib/firebase/admin";
 import type {
+  DownloadedObject,
   SignedDownloadUrl,
   StorageProvider,
   StoredObject,
@@ -27,6 +28,21 @@ export class FirebaseStorageProvider implements StorageProvider {
       bucket: bucket.name,
       contentType: input.contentType,
       bytes: bytes.byteLength
+    };
+  }
+
+  async downloadObject(path: string): Promise<DownloadedObject> {
+    const file = getFirebaseStorage().bucket().file(path);
+    const [bytes] = await file.download();
+    const [metadata] = await file.getMetadata();
+
+    return {
+      path,
+      bytes,
+      contentType:
+        typeof metadata.contentType === "string"
+          ? metadata.contentType
+          : "application/octet-stream"
     };
   }
 

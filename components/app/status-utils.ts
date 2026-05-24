@@ -1,5 +1,6 @@
 import type { BadgeProps } from "@/components/ui/badge";
 import type { FirestoreProject } from "@/lib/firestore/projects";
+import type { ExportJobView } from "@/lib/jobs/export-types";
 import type { GenerationJobView } from "@/lib/jobs/generation-types";
 
 export function projectStatusVariant(
@@ -18,6 +19,20 @@ export function projectStatusVariant(
 
 export function generationStatusVariant(
   status: GenerationJobView["status"]
+): BadgeProps["variant"] {
+  if (status === "succeeded") {
+    return "default";
+  }
+
+  if (status === "failed" || status === "cancelled") {
+    return "warning";
+  }
+
+  return "secondary";
+}
+
+export function exportStatusVariant(
+  status: ExportJobView["status"]
 ): BadgeProps["variant"] {
   if (status === "succeeded") {
     return "default";

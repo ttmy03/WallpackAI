@@ -3,6 +3,7 @@ import type {
   GeneratedArtworkPreview,
   GenerationJobView
 } from "@/lib/jobs/generation-types";
+import type { ExportJobView } from "@/lib/jobs/export-types";
 
 export type DashboardSummary = {
   creditBalance: number;
@@ -16,6 +17,8 @@ export type ProjectDetail = {
   project: FirestoreProject;
   generationJobs: GenerationJobView[];
   latestGenerationJob: GenerationJobView | null;
+  exportJobs: ExportJobView[];
+  latestExportJob: ExportJobView | null;
   artworks: GeneratedArtworkPreview[];
 };
 
@@ -28,5 +31,11 @@ export type UserSettings = {
 export type RetryGenerationResponse = {
   jobId: string;
   status: GenerationJobView["status"];
+  projectId: string;
+};
+
+export type ExportJobResponse = {
+  jobId: string;
+  status: ExportJobView["status"];
   projectId: string;
 };

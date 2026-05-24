@@ -108,7 +108,7 @@ export function DashboardClient() {
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            Etsy pack export is not connected yet.
+            Completed Etsy pack exports with downloadable ZIP files.
           </CardContent>
         </Card>
         <Card>

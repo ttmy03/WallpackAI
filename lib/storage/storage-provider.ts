@@ -12,6 +12,12 @@ export type StoredObject = {
   bytes: number;
 };
 
+export type DownloadedObject = {
+  path: string;
+  bytes: Buffer;
+  contentType: string;
+};
+
 export type SignedDownloadUrl = {
   url: string;
   expiresAt: Date;
@@ -19,6 +25,7 @@ export type SignedDownloadUrl = {
 
 export interface StorageProvider {
   uploadObject(input: UploadObjectInput): Promise<StoredObject>;
+  downloadObject(path: string): Promise<DownloadedObject>;
   createSignedDownloadUrl(
     path: string,
     options?: { ttlSeconds?: number }

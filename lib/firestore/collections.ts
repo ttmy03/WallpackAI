@@ -2,6 +2,7 @@ export const FIRESTORE_COLLECTIONS = {
   users: "users",
   projects: "projects",
   generationJobs: "generationJobs",
+  exportJobs: "exportJobs",
   artworks: "artworks",
   creditLedgerEntries: "creditLedgerEntries"
 } as const;
@@ -30,6 +31,13 @@ export function projectDocumentPath(projectId: string) {
 
 export function generationJobDocumentPath(jobId: string) {
   return `${FIRESTORE_COLLECTIONS.generationJobs}/${assertFirestoreDocumentId(
+    jobId,
+    "jobId"
+  )}`;
+}
+
+export function exportJobDocumentPath(jobId: string) {
+  return `${FIRESTORE_COLLECTIONS.exportJobs}/${assertFirestoreDocumentId(
     jobId,
     "jobId"
   )}`;

@@ -50,9 +50,10 @@ interface ImageProvider {
 }
 ```
 
-Default provider:
+Default preview provider:
 
-- Runware image inference with OpenAI GPT Image 2, followed by Runware P-Image Upscale.
+- Runware image inference with OpenAI GPT Image 2.
+- Runware P-Image Upscale is reserved for export/pack creation, not preview generation.
 
 Provider selection should come from environment variables:
 

@@ -1,4 +1,5 @@
 import type { GenerationQuality } from "@/lib/jobs/generation-types";
+import type { PrintRatioPresetKey } from "@/lib/print/presets";
 import type { PromptInput } from "@/lib/prompts/schema";
 
 export type JobStatus =
@@ -24,6 +25,7 @@ export type ExportJobInput = {
   userId: string;
   projectId: string;
   artworkId: string;
+  ratioKeys?: PrintRatioPresetKey[];
 };
 
 export interface JobRunner {

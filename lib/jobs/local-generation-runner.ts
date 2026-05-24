@@ -278,6 +278,58 @@ export function getLocalCreditBalance(userId: string) {
   return state.ledger.getBalance(userId);
 }
 
+export function reserveLocalCredits(input: {
+  userId: string;
+  amount: number;
+  reason: string;
+  idempotencyKey: string;
+  relatedJobId?: string;
+}) {
+  ensureDevCredits(input.userId);
+  state.ledger.reserve(input);
+}
+
+export function commitLocalCredits(input: {
+  userId: string;
+  reason: string;
+  idempotencyKey: string;
+  relatedJobId?: string;
+}) {
+  state.ledger.commit(input);
+}
+
+export function refundLocalCredits(input: {
+  userId: string;
+  amount: number;
+  reason: string;
+  idempotencyKey: string;
+  relatedJobId?: string;
+}) {
+  state.ledger.refund(input);
+}
+
+export function getLocalArtworkForUser(input: {
+  userId: string;
+  projectId: string;
+  artworkId: string;
+}): GeneratedArtworkPreview | null {
+  for (const job of state.jobs.values()) {
+    if (job.userId !== input.userId || job.projectId !== input.projectId) {
+      continue;
+    }
+
+    const artwork = job.artworks.find(
+      (candidate) => candidate.artworkId === input.artworkId
+    );
+
+    if (artwork) {
+      return artwork;
+    }
+  }
+
+  return null;
+}
+
 async function processLocalGenerationJob(jobId: string) {
   const job = state.jobs.get(jobId);
 
