@@ -26,7 +26,10 @@ export async function upsertFirestoreUserFromSession(
   return db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(ref);
     const existing = snapshot.exists
-      ? firestoreUserFromDocument(sessionUser.firebaseUid, snapshot.data() ?? {})
+      ? firestoreUserFromDocument(
+          sessionUser.firebaseUid,
+          snapshot.data() ?? {}
+        )
       : null;
     const user: FirestoreUser = {
       id: sessionUser.firebaseUid,
@@ -45,6 +48,41 @@ export async function upsertFirestoreUserFromSession(
     transaction.set(ref, user, { merge: true });
     return user;
   });
+}
+
+export async function getFirestoreUser(userId: string) {
+  const snapshot = await getFirebaseFirestore()
+    .doc(userDocumentPath(userId))
+    .get();
+
+  if (!snapshot.exists) {
+    return null;
+  }
+
+  return firestoreUserFromDocument(userId, snapshot.data() ?? {});
+}
+
+export async function updateFirestoreUserSettings(
+  userId: string,
+  input: { defaultAiDisclosure: boolean }
+) {
+  const now = new Date().toISOString();
+
+  await getFirebaseFirestore().doc(userDocumentPath(userId)).set(
+    {
+      defaultAiDisclosure: input.defaultAiDisclosure,
+      updatedAt: now
+    },
+    { merge: true }
+  );
+
+  const user = await getFirestoreUser(userId);
+
+  if (!user) {
+    throw new Error("User settings could not be loaded after update.");
+  }
+
+  return user;
 }
 
 export function firestoreUserFromDocument(

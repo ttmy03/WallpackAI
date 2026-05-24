@@ -8,6 +8,7 @@ import {
 } from "@/lib/firestore/collections";
 import { firestoreGenerationJobFromDocument } from "@/lib/firestore/generation-jobs";
 import { firestoreProjectFromDocument } from "@/lib/firestore/projects";
+import { firestoreUserFromDocument } from "@/lib/firestore/users";
 import type { PromptInput } from "@/lib/prompts/schema";
 
 const promptInputs: PromptInput = {
@@ -73,5 +74,25 @@ describe("Firestore persistence helpers", () => {
     expect(job.jobId).toBe("gen_123");
     expect(job.status).toBe("succeeded");
     expect(job.artworks).toEqual([]);
+  });
+
+  it("maps Firestore user settings with AI disclosure enabled by default", () => {
+    const user = firestoreUserFromDocument("firebase-user-1", {
+      email: "seller@example.com",
+      name: "Seller",
+      signInProvider: "google.com",
+      emailVerified: true
+    });
+
+    expect(user.id).toBe("firebase-user-1");
+    expect(user.defaultAiDisclosure).toBe(true);
+  });
+
+  it("maps Firestore user settings when AI disclosure is disabled", () => {
+    const user = firestoreUserFromDocument("firebase-user-1", {
+      defaultAiDisclosure: false
+    });
+
+    expect(user.defaultAiDisclosure).toBe(false);
   });
 });

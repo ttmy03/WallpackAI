@@ -11,6 +11,7 @@ import {
   Sparkles
 } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useFirebaseAuthUser } from "@/components/auth/use-firebase-auth-user";
@@ -37,7 +38,11 @@ import { type PromptInput, promptInputSchema } from "@/lib/prompts/schema";
 import { cn } from "@/lib/utils";
 
 const steps = ["Concept", "Style", "Palette", "Composition", "Generate"];
-const terminalGenerationStatuses = new Set(["succeeded", "failed", "cancelled"]);
+const terminalGenerationStatuses = new Set([
+  "succeeded",
+  "failed",
+  "cancelled"
+]);
 
 type QueueGenerationResponse = {
   jobId: string;
@@ -75,6 +80,7 @@ export function ProjectWizard() {
   );
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [isQueueingGeneration, setIsQueueingGeneration] = useState(false);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const result = useMemo(() => {
@@ -115,35 +121,35 @@ export function ProjectWizard() {
     };
   }, []);
 
-  const pollGenerationJob = useCallback(
-    async function pollGenerationJob(jobId: string, token: string) {
-      const response = await fetch(`/api/app/generation-jobs/${jobId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-      const payload = (await response.json()) as ApiResponse<GenerationJobView>;
-
-      if (!payload.ok) {
-        throw new Error(payload.error.message);
+  const pollGenerationJob = useCallback(async function pollGenerationJob(
+    jobId: string,
+    token: string
+  ) {
+    const response = await fetch(`/api/app/generation-jobs/${jobId}`, {
+      headers: {
+        Authorization: `Bearer ${token}`
       }
+    });
+    const payload = (await response.json()) as ApiResponse<GenerationJobView>;
 
-      setGenerationJob(payload.data);
+    if (!payload.ok) {
+      throw new Error(payload.error.message);
+    }
 
-      if (!terminalGenerationStatuses.has(payload.data.status)) {
-        pollTimeoutRef.current = setTimeout(() => {
-          void pollGenerationJob(jobId, token).catch((error: unknown) => {
-            setGenerationError(
-              error instanceof Error
-                ? error.message
-                : "Generation status could not be loaded."
-            );
-          });
-        }, 1200);
-      }
-    },
-    []
-  );
+    setGenerationJob(payload.data);
+
+    if (!terminalGenerationStatuses.has(payload.data.status)) {
+      pollTimeoutRef.current = setTimeout(() => {
+        void pollGenerationJob(jobId, token).catch((error: unknown) => {
+          setGenerationError(
+            error instanceof Error
+              ? error.message
+              : "Generation status could not be loaded."
+          );
+        });
+      }, 1200);
+    }
+  }, []);
 
   async function handleGenerate() {
     if (!result.ok || isQueueingGeneration) {
@@ -165,18 +171,26 @@ export function ProjectWizard() {
 
     try {
       const token = await authState.user.getIdToken();
+      const generationBody = activeProjectId
+        ? {
+            projectId: activeProjectId,
+            promptInputs: input,
+            previewCount: 2,
+            quality: "draft"
+          }
+        : {
+            projectName: input.packName,
+            promptInputs: input,
+            previewCount: 2,
+            quality: "draft"
+          };
       const response = await fetch("/api/app/generations", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({
-          projectName: input.packName,
-          promptInputs: input,
-          previewCount: 2,
-          quality: "draft"
-        })
+        body: JSON.stringify(generationBody)
       });
       const payload =
         (await response.json()) as ApiResponse<QueueGenerationResponse>;
@@ -185,10 +199,13 @@ export function ProjectWizard() {
         throw new Error(payload.error.message);
       }
 
+      setActiveProjectId(payload.data.projectId);
       await pollGenerationJob(payload.data.jobId, token);
     } catch (error) {
       setGenerationError(
-        error instanceof Error ? error.message : "Generation could not be started."
+        error instanceof Error
+          ? error.message
+          : "Generation could not be started."
       );
     } finally {
       setIsQueueingGeneration(false);
@@ -452,7 +469,9 @@ export function ProjectWizard() {
                     <p className="mt-3 text-sm text-muted-foreground">
                       {generationJob.stage ?? "queued"} ·{" "}
                       {generationJob.creditCost} credits
-                      {generationJob.creditCommitted ? " committed" : " reserved"}
+                      {generationJob.creditCommitted
+                        ? " committed"
+                        : " reserved"}
                     </p>
                   ) : null}
 
@@ -485,7 +504,8 @@ export function ProjectWizard() {
                   {generationJob?.artworks.length ? (
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       {generationJob.artworks.map((artwork, index) => {
-                        const previewSrc = artwork.dataUrl ?? artwork.previewUrl;
+                        const previewSrc =
+                          artwork.dataUrl ?? artwork.previewUrl;
 
                         return (
                           <figure
@@ -513,6 +533,16 @@ export function ProjectWizard() {
                         );
                       })}
                     </div>
+                  ) : null}
+
+                  {generationJob?.projectId ? (
+                    <Button asChild variant="outline" className="mt-4 w-fit">
+                      <Link
+                        href={`/app/projects/${generationJob.projectId}/editor`}
+                      >
+                        Open project editor
+                      </Link>
+                    </Button>
                   ) : null}
                 </div>
               ) : null}

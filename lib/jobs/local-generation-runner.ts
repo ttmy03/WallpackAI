@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { getImageProvider } from "@/lib/ai";
 import type { GeneratedImage } from "@/lib/ai/image-provider";
-import { RUNWARE_SEEDREAM_AIR_ID } from "@/lib/ai/providers/runware";
+import { RUNWARE_GPT_IMAGE_AIR_ID } from "@/lib/ai/providers/runware";
 import {
   InMemoryCreditLedger,
   InsufficientCreditsError
@@ -12,8 +12,9 @@ import {
   saveFirestoreGenerationJob
 } from "@/lib/firestore/generation-jobs";
 import {
-  markFirestoreProjectGenerated,
-  markFirestoreProjectGenerating
+  getFirestoreProjectForUser,
+  markFirestoreProjectGenerating,
+  markFirestoreProjectStatus
 } from "@/lib/firestore/projects";
 import type {
   GeneratedArtworkPreview,
@@ -94,8 +95,11 @@ export async function enqueueLocalGenerationJob(
   const previewCount = clampPreviewCount(input.previewCount);
   const projectId = input.projectId ?? `local_${randomUUID()}`;
   const projectName =
-    input.projectName ?? parsedPromptInputs.packName ?? "Untitled wall-art pack";
-  const provider = process.env.IMAGE_PROVIDER === "runware" ? "runware" : "mock";
+    input.projectName ??
+    parsedPromptInputs.packName ??
+    "Untitled wall-art pack";
+  const provider =
+    process.env.IMAGE_PROVIDER === "runware" ? "runware" : "mock";
   const job: LocalGenerationJob = {
     id: `gen_${randomUUID()}`,
     userId: input.userId,
@@ -114,7 +118,7 @@ export async function enqueueLocalGenerationJob(
     provider,
     model:
       provider === "runware"
-        ? process.env.RUNWARE_AIR_ID ?? RUNWARE_SEEDREAM_AIR_ID
+        ? (process.env.RUNWARE_AIR_ID ?? RUNWARE_GPT_IMAGE_AIR_ID)
         : "mock-wall-art-preview",
     retryable: false,
     errorCode: null,
@@ -140,7 +144,10 @@ export async function enqueueLocalGenerationJob(
   };
 }
 
-export async function getLocalGenerationJobForUser(jobId: string, userId: string) {
+export async function getLocalGenerationJobForUser(
+  jobId: string,
+  userId: string
+) {
   const job = state.jobs.get(jobId);
 
   if (job?.userId === userId) {
@@ -148,6 +155,101 @@ export async function getLocalGenerationJobForUser(jobId: string, userId: string
   }
 
   return getFirestoreGenerationJobForUser(jobId, userId);
+}
+
+export async function cancelLocalGenerationJob(jobId: string, userId: string) {
+  const job = state.jobs.get(jobId);
+
+  if (!job) {
+    const persistedJob = await getFirestoreGenerationJobForUser(jobId, userId);
+
+    if (!persistedJob) {
+      return {
+        ok: false as const,
+        code: "GENERATION_JOB_NOT_FOUND",
+        message: "Generation job was not found.",
+        status: 404
+      };
+    }
+
+    return cannotCancelResult(persistedJob.status);
+  }
+
+  if (job.userId !== userId) {
+    return {
+      ok: false as const,
+      code: "GENERATION_JOB_NOT_FOUND",
+      message: "Generation job was not found.",
+      status: 404
+    };
+  }
+
+  if (job.status !== "queued" && job.status !== "validating") {
+    return cannotCancelResult(job.status);
+  }
+
+  if (job.creditReserved && !job.creditCommitted) {
+    state.ledger.refund({
+      userId: job.userId,
+      amount: job.creditCost,
+      reason: "Preview generation cancelled",
+      idempotencyKey: `${job.id}:cancel-refund`,
+      relatedJobId: job.id
+    });
+  }
+
+  job.status = "cancelled";
+  job.stage = "cancelled";
+  job.retryable = true;
+  job.completedAt = new Date();
+  await persistGenerationJob(job);
+  await persistProjectStatus(job, "draft");
+
+  return { ok: true as const, job: toGenerationJobView(job) };
+}
+
+export async function retryLocalGenerationJob(jobId: string, userId: string) {
+  const job = await getLocalGenerationJobForUser(jobId, userId);
+
+  if (!job) {
+    return {
+      ok: false as const,
+      code: "GENERATION_JOB_NOT_FOUND",
+      message: "Generation job was not found.",
+      status: 404
+    };
+  }
+
+  if (job.status !== "failed" || !job.retryable) {
+    return {
+      ok: false as const,
+      code: "RETRY_NOT_ALLOWED",
+      message: "Only failed retryable generation jobs can be retried.",
+      status: 409
+    };
+  }
+
+  const project = await getFirestoreProjectForUser(userId, job.projectId);
+
+  if (!project) {
+    return {
+      ok: false as const,
+      code: "PROJECT_NOT_FOUND",
+      message: "Project was not found for this account.",
+      status: 404
+    };
+  }
+
+  const queued = await enqueueLocalGenerationJob({
+    userId,
+    projectId: project.id,
+    projectName: project.name,
+    promptInputs: project.promptInputs,
+    previewCount: job.requestedCount,
+    quality: job.quality
+  });
+
+  return { ok: true as const, job: queued };
 }
 
 export async function waitForLocalGenerationJob(
@@ -189,6 +291,10 @@ async function processLocalGenerationJob(jobId: string) {
   await persistGenerationJob(job);
 
   try {
+    if (isGenerationJobCancelled(job)) {
+      return;
+    }
+
     ensureDevCredits(job.userId);
     state.ledger.reserve({
       userId: job.userId,
@@ -199,6 +305,10 @@ async function processLocalGenerationJob(jobId: string) {
     });
     job.creditReserved = true;
     await persistGenerationJob(job);
+
+    if (isGenerationJobCancelled(job)) {
+      return;
+    }
 
     job.status = "running";
     job.stage = "provider_generation";
@@ -219,12 +329,12 @@ async function processLocalGenerationJob(jobId: string) {
     await persistGenerationJob(job);
     job.artworks = await Promise.all(
       images.map((image, index) =>
-      toArtworkPreview(image, {
-        index,
-        userId: job.userId,
-        projectId: job.projectId,
-        jobId: job.id
-      })
+        toArtworkPreview(image, {
+          index,
+          userId: job.userId,
+          projectId: job.projectId,
+          jobId: job.id
+        })
       )
     );
 
@@ -258,7 +368,9 @@ async function processLocalGenerationJob(jobId: string) {
         ? "INSUFFICIENT_CREDITS"
         : "GENERATION_FAILED";
     job.errorMessage =
-      error instanceof Error ? error.message : "Generation failed unexpectedly.";
+      error instanceof Error
+        ? error.message
+        : "Generation failed unexpectedly.";
     job.retryable = !(error instanceof InsufficientCreditsError);
     job.completedAt = new Date();
     await persistGenerationJob(job).catch(() => undefined);
@@ -269,7 +381,10 @@ async function processLocalGenerationJob(jobId: string) {
 function ensureDevCredits(userId: string) {
   state.ledger.grant({
     userId,
-    amount: readPositiveIntegerEnv("LOCAL_GENERATION_DEV_CREDITS", DEFAULT_DEV_CREDITS),
+    amount: readPositiveIntegerEnv(
+      "LOCAL_GENERATION_DEV_CREDITS",
+      DEFAULT_DEV_CREDITS
+    ),
     reason: "Local generation development credits",
     idempotencyKey: `local-generation-dev-grant:${userId}`
   });
@@ -301,7 +416,8 @@ async function toArtworkPreview(
         providerRequestId: image.providerRequestId ?? ""
       }
     });
-    const signedUrl = await getStorageProvider().createSignedDownloadUrl(storagePath);
+    const signedUrl =
+      await getStorageProvider().createSignedDownloadUrl(storagePath);
 
     return {
       artworkId,
@@ -371,7 +487,9 @@ function readPositiveIntegerEnv(name: string, fallback: number) {
 }
 
 async function persistGenerationJob(job: LocalGenerationJob) {
-  await saveFirestoreGenerationJob(toGenerationJobView(job), { userId: job.userId });
+  await saveFirestoreGenerationJob(toGenerationJobView(job), {
+    userId: job.userId
+  });
 }
 
 async function persistProjectGenerating(job: LocalGenerationJob) {
@@ -390,15 +508,35 @@ async function persistProjectGenerated(
   job: LocalGenerationJob,
   status: "ready" | "failed"
 ) {
+  await persistProjectStatus(job, status);
+}
+
+async function persistProjectStatus(
+  job: LocalGenerationJob,
+  status: "draft" | "ready" | "failed"
+) {
   if (process.env.NODE_ENV === "test") {
     return;
   }
 
-  await markFirestoreProjectGenerated({
+  await markFirestoreProjectStatus({
     projectId: job.projectId,
     userId: job.userId,
     status
   });
+}
+
+function cannotCancelResult(status: JobStatus) {
+  return {
+    ok: false as const,
+    code: "CANNOT_CANCEL",
+    message: `Generation job cannot be cancelled while it is ${status}.`,
+    status: 409
+  };
+}
+
+function isGenerationJobCancelled(job: LocalGenerationJob) {
+  return job.status === "cancelled";
 }
 
 function extensionFromMimeType(mimeType: GeneratedImage["mimeType"]) {

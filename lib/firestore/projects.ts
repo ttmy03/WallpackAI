@@ -59,17 +59,42 @@ export async function createFirestoreProject(input: {
   return project;
 }
 
+export async function duplicateFirestoreProject(input: {
+  userId: string;
+  projectId: string;
+}) {
+  const project = await getFirestoreProjectForUser(
+    input.userId,
+    input.projectId
+  );
+
+  if (!project) {
+    return null;
+  }
+
+  return createFirestoreProject({
+    userId: input.userId,
+    name: `${project.name} copy`,
+    promptInputs: project.promptInputs
+  });
+}
+
 export async function getFirestoreProjectForUser(
   userId: string,
   projectId: string
 ) {
-  const snapshot = await getFirebaseFirestore().doc(projectDocumentPath(projectId)).get();
+  const snapshot = await getFirebaseFirestore()
+    .doc(projectDocumentPath(projectId))
+    .get();
 
   if (!snapshot.exists) {
     return null;
   }
 
-  const project = firestoreProjectFromDocument(snapshot.id, snapshot.data() ?? {});
+  const project = firestoreProjectFromDocument(
+    snapshot.id,
+    snapshot.data() ?? {}
+  );
   return project.userId === userId ? project : null;
 }
 
@@ -91,7 +116,10 @@ export async function markFirestoreProjectGenerating(input: {
   userId: string;
   generationJobId: string;
 }) {
-  const project = await getFirestoreProjectForUser(input.userId, input.projectId);
+  const project = await getFirestoreProjectForUser(
+    input.userId,
+    input.projectId
+  );
 
   if (!project) {
     return;
@@ -112,7 +140,18 @@ export async function markFirestoreProjectGenerated(input: {
   userId: string;
   status: "ready" | "failed";
 }) {
-  const project = await getFirestoreProjectForUser(input.userId, input.projectId);
+  await markFirestoreProjectStatus(input);
+}
+
+export async function markFirestoreProjectStatus(input: {
+  projectId: string;
+  userId: string;
+  status: FirestoreProject["status"];
+}) {
+  const project = await getFirestoreProjectForUser(
+    input.userId,
+    input.projectId
+  );
 
   if (!project) {
     return;

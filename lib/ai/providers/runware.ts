@@ -6,8 +6,11 @@ import type {
   ImageProvider
 } from "@/lib/ai/image-provider";
 
-export const RUNWARE_SEEDREAM_AIR_ID = "bytedance:seedream@4.5";
+export const RUNWARE_GPT_IMAGE_AIR_ID = "openai:gpt-image@2";
+export const RUNWARE_P_IMAGE_UPSCALE_AIR_ID = "prunaai:p-image@upscale";
 export const RUNWARE_API_URL = "https://api.runware.ai/v1";
+export const RUNWARE_UPSCALE_NEGATIVE_PROMPT =
+  "Remove any border, frame, mat, wall, room scene, furniture, poster mockup, product mockup, shadows from a frame, watermark, logo, text, letters, signature, or photo-of-a-print artifacts. Keep artwork only, full bleed, clean printable image.";
 
 type RunwareImageTask = {
   taskType: "imageInference";
@@ -21,20 +24,33 @@ type RunwareImageTask = {
   outputFormat: "JPG" | "PNG" | "WEBP";
   outputQuality: number;
   includeCost: boolean;
-  safety: {
-    checkContent: boolean;
+  safety: "none" | "fast";
+};
+
+type RunwareUpscaleTask = {
+  taskType: "upscale";
+  taskUUID: string;
+  model: string;
+  positivePrompt: string;
+  negativePrompt: string;
+  inputs: {
+    image: string;
   };
-  providerSettings?: {
-    bytedance?: {
-      optimizePromptMode?: "standard" | "fast";
-      maxSequentialImages?: number;
-    };
+  targetMegapixels: number;
+  outputType: "URL";
+  outputFormat: "JPG" | "PNG" | "WEBP";
+  outputQuality: number;
+  deliveryMethod: "sync";
+  includeCost: boolean;
+  settings: {
+    enhanceDetails: boolean;
+    realism: boolean;
   };
 };
 
 type RunwareImageResponse = {
   data?: Array<{
-    taskType: "imageInference";
+    taskType: "imageInference" | "upscale";
     taskUUID: string;
     imageUUID?: string;
     imageURL?: string;
@@ -58,6 +74,7 @@ export class RunwareImageProvider implements ImageProvider {
       apiKey?: string;
       apiUrl?: string;
       airId?: string;
+      upscaleAirId?: string;
       fetcher?: typeof fetch;
     } = {}
   ) {}
@@ -66,14 +83,16 @@ export class RunwareImageProvider implements ImageProvider {
     const apiKey = this.options.apiKey ?? process.env.RUNWARE_API_KEY;
 
     if (!apiKey) {
-      throw new Error("RUNWARE_API_KEY is required for Runware image generation");
+      throw new Error(
+        "RUNWARE_API_KEY is required for Runware image generation"
+      );
     }
 
     const task = buildRunwareImageTask(input, {
       airId:
         this.options.airId ??
         process.env.RUNWARE_AIR_ID ??
-        RUNWARE_SEEDREAM_AIR_ID
+        RUNWARE_GPT_IMAGE_AIR_ID
     });
     const fetcher = this.options.fetcher ?? fetch;
     const response = await fetcher(
@@ -109,21 +128,46 @@ export class RunwareImageProvider implements ImageProvider {
 
     return Promise.all(
       outputs.map(async (output) => {
-        const bytes = await downloadRunwareImage(output, fetcher);
+        const upscaled = await upscaleRunwareOutput({
+          output,
+          apiKey,
+          fetcher,
+          apiUrl: this.options.apiUrl ?? process.env.RUNWARE_API_URL,
+          outputFormat: task.outputFormat,
+          sourceWidth: task.width,
+          sourceHeight: task.height,
+          positivePrompt: input.prompt,
+          upscaleAirId: this.options.upscaleAirId,
+          negativePrompt: input.negativePrompt
+        });
+        const bytes = await downloadRunwareImage(upscaled.output, fetcher);
         const mimeType = mimeTypeFromBytes(bytes);
 
         return {
           bytes,
           mimeType,
-          width: task.width,
-          height: task.height,
-          providerRequestId: output.imageUUID ?? output.taskUUID,
+          width: upscaled.width,
+          height: upscaled.height,
+          providerRequestId:
+            upscaled.output.imageUUID ??
+            output.imageUUID ??
+            upscaled.output.taskUUID,
           usage: {
-            taskUUID: output.taskUUID,
+            taskUUID: upscaled.output.taskUUID,
+            generationTaskUUID: output.taskUUID,
+            generationImageUUID: output.imageUUID,
+            upscaleTaskUUID: upscaled.output.taskUUID,
+            upscaleImageUUID: upscaled.output.imageUUID,
             seed: output.seed,
-            cost: output.cost,
+            generationCost: output.cost,
+            upscaleCost: upscaled.output.cost,
+            cost: sumOptionalNumbers(output.cost, upscaled.output.cost),
             NSFWContent: output.NSFWContent,
-            model: task.model
+            model: task.model,
+            upscaleModel: upscaled.task.model,
+            upscaleTargetMegapixels: upscaled.task.targetMegapixels,
+            upscalePositivePrompt: upscaled.task.positivePrompt,
+            upscaleNegativePrompt: upscaled.task.negativePrompt
           }
         };
       })
@@ -141,7 +185,7 @@ export function buildRunwareImageTask(
   return {
     taskType: "imageInference",
     taskUUID: options.taskUUID ?? randomUUID(),
-    model: options.airId ?? RUNWARE_SEEDREAM_AIR_ID,
+    model: options.airId ?? RUNWARE_GPT_IMAGE_AIR_ID,
     positivePrompt: input.prompt,
     width: dimensions.width,
     height: dimensions.height,
@@ -150,18 +194,211 @@ export function buildRunwareImageTask(
     outputFormat: "JPG",
     outputQuality: 95,
     includeCost: true,
-    safety: {
-      checkContent: true
+    safety: "fast"
+  };
+}
+
+export function buildRunwareUpscaleTask(
+  input: {
+    image: string;
+    sourceWidth: number;
+    sourceHeight: number;
+    positivePrompt?: string;
+    negativePrompt?: string;
+    outputFormat?: "JPG" | "PNG" | "WEBP";
+  },
+  options: {
+    airId?: string;
+    taskUUID?: string;
+    targetMegapixels?: number;
+  } = {}
+): RunwareUpscaleTask {
+  return {
+    taskType: "upscale",
+    taskUUID: options.taskUUID ?? randomUUID(),
+    model: options.airId ?? RUNWARE_P_IMAGE_UPSCALE_AIR_ID,
+    positivePrompt: buildUpscalePositivePrompt(input.positivePrompt),
+    negativePrompt: buildUpscaleNegativePrompt(input.negativePrompt),
+    inputs: {
+      image: input.image
     },
-    providerSettings: {
-      bytedance: {
-        optimizePromptMode: "standard"
-      }
+    targetMegapixels:
+      options.targetMegapixels ??
+      resolveUpscaleTargetMegapixels(input.sourceWidth, input.sourceHeight),
+    outputType: "URL",
+    outputFormat: input.outputFormat ?? "JPG",
+    outputQuality: 95,
+    deliveryMethod: "sync",
+    includeCost: true,
+    settings: {
+      enhanceDetails: true,
+      realism: true
     }
   };
 }
 
-function formatRunwareErrors(errors: NonNullable<RunwareImageResponse["errors"]>) {
+async function upscaleRunwareOutput(input: {
+  output: NonNullable<RunwareImageResponse["data"]>[number];
+  apiKey: string;
+  fetcher: typeof fetch;
+  apiUrl?: string;
+  outputFormat: "JPG" | "PNG" | "WEBP";
+  sourceWidth: number;
+  sourceHeight: number;
+  positivePrompt?: string;
+  upscaleAirId?: string;
+  negativePrompt?: string;
+}) {
+  const image = runwareOutputToImageInput(input.output);
+  const task = buildRunwareUpscaleTask(
+    {
+      image,
+      sourceWidth: input.sourceWidth,
+      sourceHeight: input.sourceHeight,
+      positivePrompt: input.positivePrompt,
+      negativePrompt: input.negativePrompt,
+      outputFormat: input.outputFormat
+    },
+    {
+      airId:
+        input.upscaleAirId ??
+        process.env.RUNWARE_UPSCALE_AIR_ID ??
+        RUNWARE_P_IMAGE_UPSCALE_AIR_ID,
+      targetMegapixels: readUpscaleTargetMegapixels()
+    }
+  );
+  const response = await input.fetcher(input.apiUrl ?? RUNWARE_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${input.apiKey}`
+    },
+    body: JSON.stringify([task])
+  });
+
+  if (!response.ok) {
+    const message = await readRunwareHttpError(response);
+    throw new Error(
+      `Runware upscale request failed with HTTP ${response.status}: ${message}`
+    );
+  }
+
+  const json = (await response.json()) as RunwareImageResponse;
+
+  if (json.errors?.length) {
+    throw new Error(formatRunwareErrors(json.errors));
+  }
+
+  const upscaledOutput = json.data?.[0];
+
+  if (!upscaledOutput) {
+    throw new Error("Runware upscale did not return an image");
+  }
+
+  return {
+    output: upscaledOutput,
+    task,
+    ...dimensionsFromMegapixels(
+      input.sourceWidth,
+      input.sourceHeight,
+      task.targetMegapixels
+    )
+  };
+}
+
+function buildUpscalePositivePrompt(prompt?: string) {
+  const base =
+    "Upscale this generated wall-art image for print. Preserve the original artwork composition, improve clean detail and texture, and keep it as full-bleed printable artwork only.";
+
+  if (!prompt?.trim()) {
+    return base;
+  }
+
+  return `${base} Original generation prompt: ${prompt.trim()}`;
+}
+
+function buildUpscaleNegativePrompt(negativePrompt?: string) {
+  const trimmedNegativePrompt = negativePrompt?.trim();
+
+  if (!trimmedNegativePrompt) {
+    return RUNWARE_UPSCALE_NEGATIVE_PROMPT;
+  }
+
+  return `${RUNWARE_UPSCALE_NEGATIVE_PROMPT} ${trimmedNegativePrompt}`;
+}
+
+function runwareOutputToImageInput(
+  output: NonNullable<RunwareImageResponse["data"]>[number]
+) {
+  const image =
+    output.imageURL ??
+    output.imageDataURI ??
+    output.imageBase64Data ??
+    output.imageUUID;
+
+  if (!image) {
+    throw new Error("Runware response did not include an image for upscaling");
+  }
+
+  return image;
+}
+
+function readUpscaleTargetMegapixels() {
+  const value = Number(process.env.RUNWARE_UPSCALE_TARGET_MEGAPIXELS);
+
+  if (!Number.isFinite(value)) {
+    return undefined;
+  }
+
+  return clampInteger(value, 1, 8);
+}
+
+function resolveUpscaleTargetMegapixels(
+  sourceWidth: number,
+  sourceHeight: number
+) {
+  const sourceMegapixels = (sourceWidth * sourceHeight) / 1_000_000;
+
+  if (!Number.isFinite(sourceMegapixels) || sourceMegapixels <= 0) {
+    return 8;
+  }
+
+  return clampInteger(Math.max(Math.ceil(sourceMegapixels), 8), 1, 8);
+}
+
+function dimensionsFromMegapixels(
+  sourceWidth: number,
+  sourceHeight: number,
+  targetMegapixels: number
+) {
+  if (sourceWidth <= 0 || sourceHeight <= 0) {
+    return { width: sourceWidth, height: sourceHeight };
+  }
+
+  const targetPixels = targetMegapixels * 1_000_000;
+  const aspectRatio = sourceWidth / sourceHeight;
+  const width = Math.round(Math.sqrt(targetPixels * aspectRatio));
+  const height = Math.round(width / aspectRatio);
+
+  return { width, height };
+}
+
+function sumOptionalNumbers(...values: Array<number | undefined>) {
+  const finiteValues = values.filter(
+    (value): value is number =>
+      typeof value === "number" && Number.isFinite(value)
+  );
+
+  if (finiteValues.length === 0) {
+    return undefined;
+  }
+
+  return finiteValues.reduce((sum, value) => sum + (value ?? 0), 0);
+}
+
+function formatRunwareErrors(
+  errors: NonNullable<RunwareImageResponse["errors"]>
+) {
   return errors
     .map((error) => {
       const message = error.message ?? error.code ?? "Runware error";
@@ -210,7 +447,7 @@ export function resolveRunwareDimensions(input: {
     case "5x7":
       return { width: 2048, height: 2864 };
     case "11x14":
-      return { width: 2200, height: 2800 };
+      return { width: 2048, height: 2608 };
     case "iso-a":
       return { width: 2048, height: 2896 };
     case "2x3":
@@ -227,14 +464,26 @@ function validateRunwareDimensions(width: number, height: number) {
   const totalPixels = width * height;
   const aspectRatio = width / height;
 
-  if (totalPixels < 3_686_400 || totalPixels > 16_777_216) {
+  if (width < 480 || width > 3840 || height < 480 || height > 3840) {
     throw new Error(
-      "Runware Seedream 4.5 dimensions must be between 3,686,400 and 16,777,216 total pixels"
+      "Runware GPT Image 2 width and height must be between 480 and 3840 pixels"
     );
   }
 
-  if (aspectRatio < 1 / 16 || aspectRatio > 16) {
-    throw new Error("Runware Seedream 4.5 aspect ratio must be between 1:16 and 16:1");
+  if (width % 16 !== 0 || height % 16 !== 0) {
+    throw new Error(
+      "Runware GPT Image 2 width and height must use 16 px steps"
+    );
+  }
+
+  if (totalPixels < 655_360 || totalPixels > 8_294_400) {
+    throw new Error(
+      "Runware GPT Image 2 dimensions must be between 655,360 and 8,294,400 total pixels"
+    );
+  }
+
+  if (aspectRatio < 1 / 3 || aspectRatio > 3) {
+    throw new Error("Runware GPT Image 2 aspect ratio must be 3:1 or narrower");
   }
 
   return { width, height };
@@ -272,7 +521,9 @@ async function downloadRunwareImage(
   const response = await fetcher(output.imageURL);
 
   if (!response.ok) {
-    throw new Error(`Failed to download Runware image: HTTP ${response.status}`);
+    throw new Error(
+      `Failed to download Runware image: HTTP ${response.status}`
+    );
   }
 
   return Buffer.from(await response.arrayBuffer());

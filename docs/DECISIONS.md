@@ -7,8 +7,9 @@
 - Added deterministic core utilities and unit tests for print math, Etsy file partitioning, prompt guardrails, listing copy disclosure, and idempotent credits before wiring real providers.
 - Swapped the planned Supabase Auth/Storage boundary to Firebase Auth/Firebase Storage after product direction changed. Stripe, Runware provider calls, Sharp export workers, and persistent Prisma repositories remain the next implementation steps. Placeholder routes and interfaces define the boundaries without pretending production integrations are complete.
 
-## 2026-05-24 Runware Seedream provider
+## 2026-05-24 Runware GPT Image provider
 
-- Set the production image provider boundary to Runware with AIR model `bytedance:seedream@4.5`.
+- Set the production image provider boundary to Runware with AIR model `openai:gpt-image@2`.
+- Run `prunaai:p-image@upscale` after generation to produce cleaner, higher-resolution previews before storage.
 - Kept provider-specific HTTP request construction under `/lib/ai/providers/runware.ts`.
 - Preserved `MockImageProvider` for local tests and cheap UI development.

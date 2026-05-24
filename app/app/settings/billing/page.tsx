@@ -25,20 +25,24 @@ export default function BillingPage() {
             <div>
               <CardTitle>Free beta</CardTitle>
               <CardDescription>
-                Subscription state will be synced through signed Stripe webhooks.
+                Stripe Checkout and Billing Portal are not connected yet.
               </CardDescription>
             </div>
             <Badge variant="secondary">inactive</Badge>
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 sm:flex-row">
-          <Button type="button">
+          <Button type="button" disabled>
             <CreditCard />
             Upgrade with Checkout
           </Button>
-          <Button type="button" variant="outline">
+          <Button type="button" variant="outline" disabled>
             Open Billing Portal
           </Button>
+          <p className="text-sm text-muted-foreground">
+            Billing actions will be enabled after the Stripe routes and webhook
+            persistence are implemented.
+          </p>
         </CardContent>
       </Card>
     </main>

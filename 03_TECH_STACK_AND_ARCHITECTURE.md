@@ -52,13 +52,15 @@ interface ImageProvider {
 
 Default provider:
 
-- Runware image inference with ByteDance Seedream 4.5.
+- Runware image inference with OpenAI GPT Image 2, followed by Runware P-Image Upscale.
 
 Provider selection should come from environment variables:
 
 ```txt
 IMAGE_PROVIDER=runware
-RUNWARE_AIR_ID=bytedance:seedream@4.5
+RUNWARE_AIR_ID=openai:gpt-image@2
+RUNWARE_UPSCALE_AIR_ID=prunaai:p-image@upscale
+RUNWARE_UPSCALE_TARGET_MEGAPIXELS=8
 ```
 
 Add provider-specific logic only under `/lib/ai/providers/runware`.

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  cancelLocalGenerationJob,
   enqueueLocalGenerationJob,
   getLocalCreditBalance,
+  retryLocalGenerationJob,
   waitForLocalGenerationJob
 } from "@/lib/jobs/local-generation-runner";
 import type { PromptInput } from "@/lib/prompts/schema";
@@ -54,5 +56,36 @@ describe("local generation runner", () => {
         previewCount: 1
       })
     ).rejects.toThrow(/protected brand/i);
+  });
+
+  it("cancels queued local generation jobs before provider work starts", async () => {
+    const userId = `seller-${crypto.randomUUID()}`;
+    const queued = await enqueueLocalGenerationJob({
+      userId,
+      projectName: safeInput.packName,
+      promptInputs: safeInput,
+      previewCount: 1
+    });
+
+    const cancelled = await cancelLocalGenerationJob(queued.jobId, userId);
+
+    expect(cancelled.ok).toBe(true);
+    expect(cancelled.ok ? cancelled.job.status : null).toBe("cancelled");
+  });
+
+  it("rejects retry for jobs that are not failed and retryable", async () => {
+    const userId = `seller-${crypto.randomUUID()}`;
+    const queued = await enqueueLocalGenerationJob({
+      userId,
+      projectName: safeInput.packName,
+      promptInputs: safeInput,
+      previewCount: 1
+    });
+    await cancelLocalGenerationJob(queued.jobId, userId);
+
+    const retry = await retryLocalGenerationJob(queued.jobId, userId);
+
+    expect(retry.ok).toBe(false);
+    expect(retry.ok ? null : retry.code).toBe("RETRY_NOT_ALLOWED");
   });
 });

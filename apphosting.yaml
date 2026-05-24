@@ -70,7 +70,19 @@ env:
       - RUNTIME
 
   - variable: RUNWARE_AIR_ID
-    value: bytedance:seedream@4.5
+    value: openai:gpt-image@2
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: RUNWARE_UPSCALE_AIR_ID
+    value: prunaai:p-image@upscale
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: RUNWARE_UPSCALE_TARGET_MEGAPIXELS
+    value: "8"
     availability:
       - BUILD
       - RUNTIME

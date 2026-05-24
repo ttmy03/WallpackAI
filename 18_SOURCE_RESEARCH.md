@@ -130,22 +130,25 @@ https://support.gelato.com/en/articles/9587689-optimizing-print-results-for-post
 https://help.printify.com/hc/en-us/articles/4483617936657-What-type-of-print-files-does-Printify-require
 https://help.printify.com/hc/en-us/articles/4483601444113-How-do-I-get-a-high-quality-design-file
 
-## Runware Image Inference and Seedream 4.5
+## Runware Image Inference and GPT Image 2
 
-Source: Runware API docs, image inference guide, connection/authentication guide, and Seedream 4.5 model reference.
+Source: Runware API docs, image inference guide, connection/authentication guide, and GPT Image 2 model reference.
 
 Key implementation notes:
 
 - Runware REST requests use `POST https://api.runware.ai/v1` with JSON task arrays.
 - Authentication can use `Authorization: Bearer <API_KEY>`.
-- Seedream 4.5 AIR ID is `bytedance:seedream@4.5`.
-- Seedream 4.5 text-to-image requests should specify explicit `width` and `height`.
+- GPT Image 2 AIR ID is `openai:gpt-image@2`.
+- P-Image Upscale AIR ID is `prunaai:p-image@upscale`.
+- GPT Image 2 text-to-image requests should specify explicit `width` and `height`.
+- GPT Image 2 dimensions use 16 px steps, 480-3840 px sides, 655,360-8,294,400 total pixels, and a maximum 3:1 aspect ratio.
+- P-Image Upscale is run after generation and receives both prompt and negative prompt cleanup guidance.
 - Store Runware `taskUUID` and `imageUUID` for support.
 
 URLs:
 https://runware.ai/docs/getting-started/how-to-connect
 https://runware.ai/docs/en/image-inference/introduction
-https://runware.ai/docs/models/bytedance-seedream-4-5
+https://runware.ai/docs/models/openai-gpt-image-2
 
 ## OpenAI Codex AGENTS.md
 

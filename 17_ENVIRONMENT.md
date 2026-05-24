@@ -30,7 +30,9 @@ FIREBASE_PRIVATE_KEY=
 # AI
 IMAGE_PROVIDER=runware
 RUNWARE_API_KEY=
-RUNWARE_AIR_ID=bytedance:seedream@4.5
+RUNWARE_AIR_ID=openai:gpt-image@2
+RUNWARE_UPSCALE_AIR_ID=prunaai:p-image@upscale
+RUNWARE_UPSCALE_TARGET_MEGAPIXELS=8
 RUNWARE_API_URL=https://api.runware.ai/v1
 DISABLE_GENERATION=false
 
@@ -106,7 +108,8 @@ Use only when ready:
 ```bash
 IMAGE_PROVIDER=runware
 RUNWARE_API_KEY=...
-RUNWARE_AIR_ID=bytedance:seedream@4.5
+RUNWARE_AIR_ID=openai:gpt-image@2
+RUNWARE_UPSCALE_AIR_ID=prunaai:p-image@upscale
 ```
 
 Keep provider calls server-side.

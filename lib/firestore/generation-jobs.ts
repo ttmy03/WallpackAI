@@ -105,6 +105,47 @@ export async function getFirestoreGenerationJobForUser(
   };
 }
 
+export async function listFirestoreGenerationJobsForUser(
+  userId: string,
+  options: { limit?: number; projectId?: string } = {}
+) {
+  if (process.env.NODE_ENV === "test") {
+    return [];
+  }
+
+  const snapshot = await getFirebaseFirestore()
+    .collection(FIRESTORE_COLLECTIONS.generationJobs)
+    .where("userId", "==", userId)
+    .get();
+  const jobs = snapshot.docs
+    .map((doc) => firestoreGenerationJobFromDocument(doc.id, doc.data()))
+    .filter((job) => !options.projectId || job.projectId === options.projectId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  return jobs.slice(0, options.limit ?? 10);
+}
+
+export async function listFirestoreArtworksForProject(
+  userId: string,
+  projectId: string
+) {
+  if (process.env.NODE_ENV === "test") {
+    return [];
+  }
+
+  const snapshot = await getFirebaseFirestore()
+    .collection(FIRESTORE_COLLECTIONS.artworks)
+    .where("userId", "==", userId)
+    .get();
+  const artworks = await Promise.all(
+    snapshot.docs
+      .filter((doc) => doc.data().projectId === projectId)
+      .map((doc) => artworkPreviewFromDocument(doc.id, doc.data()))
+  );
+
+  return artworks.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 export function firestoreGenerationJobFromDocument(
   id: string,
   data: FirebaseFirestore.DocumentData

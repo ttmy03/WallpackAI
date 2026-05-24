@@ -84,7 +84,7 @@ text, words, letters, logo, watermark, signature, frame, poster mockup, room moc
 
 Use provider-supported portrait/landscape sizes closest to the user's primary ratio.
 
-For Runware image models, keep AIR model selection and dimensions in the provider adapter. Seedream 4.5 uses the AIR ID `bytedance:seedream@4.5` and requires explicit dimensions for text-to-image requests.
+For Runware image models, keep AIR model selection and dimensions in the provider adapter. GPT Image 2 uses the AIR ID `openai:gpt-image@2` and requires explicit dimensions for text-to-image requests. After generation, upscale with `prunaai:p-image@upscale` and send the product negative prompt plus extra cleanup terms for borders, wall scenes, frames, mockups, text, logos, and watermarks.
 
 MVP recommendation:
 
@@ -94,7 +94,7 @@ const PROVIDER_SIZE_BY_RATIO = {
   '3x4': '1728x2304',
   '4x5': '2048x2560',
   '5x7': '2048x2864',
-  '11x14': '2200x2800',
+  '11x14': '2048x2608',
   '1x1': '2048x2048'
 };
 ```
@@ -103,11 +103,11 @@ If provider supports custom sizes up to larger edges, prefer higher source resol
 
 ```ts
 const HIGH_SOURCE_SIZE_BY_RATIO = {
-  '2x3': '2160x3240',
+  '2x3': '2160x3248',
   '3x4': '2160x2880',
-  '4x5': '2160x2700',
+  '4x5': '2160x2704',
   '5x7': '2160x3024',
-  '11x14': '2200x2800'
+  '11x14': '2048x2608'
 };
 ```
 

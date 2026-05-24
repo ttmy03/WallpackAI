@@ -2,13 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { fail, ok } from "@/lib/api-response";
-import { getFirebaseUserFromRequest } from "@/lib/auth/firebase-auth";
-import { isGoogleSignInProvider } from "@/lib/firebase/google-auth";
+import { requireAppUser } from "@/lib/auth/api-auth";
 import {
   createFirestoreProject,
   getFirestoreProjectForUser
 } from "@/lib/firestore/projects";
-import { upsertFirestoreUserFromSession } from "@/lib/firestore/users";
 import { enqueueLocalGenerationJob } from "@/lib/jobs/local-generation-runner";
 import { promptInputSchema } from "@/lib/prompts/schema";
 
@@ -21,27 +19,10 @@ const generationRequestSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const user = await getFirebaseUserFromRequest(request).catch(() => null);
+  const auth = await requireAppUser(request, "generating previews");
 
-  if (!user) {
-    return NextResponse.json(
-      fail("UNAUTHENTICATED", "A Firebase ID token is required."),
-      { status: 401 }
-    );
-  }
-
-  if (!isGoogleSignInProvider(user.signInProvider)) {
-    return NextResponse.json(
-      fail("PROVIDER_NOT_ALLOWED", "Sign in with Google before generating previews."),
-      { status: 403 }
-    );
-  }
-
-  if (!user.emailVerified) {
-    return NextResponse.json(
-      fail("EMAIL_NOT_VERIFIED", "Confirm your email before generating previews."),
-      { status: 403 }
-    );
+  if (!auth.ok) {
+    return auth.response;
   }
 
   const json: unknown = await request.json();
@@ -49,12 +30,16 @@ export async function POST(request: Request) {
 
   if (!parsed.success) {
     return NextResponse.json(
-      fail("VALIDATION_ERROR", "Generation input is invalid.", parsed.error.flatten()),
+      fail(
+        "VALIDATION_ERROR",
+        "Generation input is invalid.",
+        parsed.error.flatten()
+      ),
       { status: 400 }
     );
   }
 
-  const firestoreUser = await upsertFirestoreUserFromSession(user);
+  const firestoreUser = auth.firestoreUser;
   const project = parsed.data.projectId
     ? await getFirestoreProjectForUser(firestoreUser.id, parsed.data.projectId)
     : await createFirestoreProject({
