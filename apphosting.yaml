@@ -81,6 +81,11 @@ env:
       - BUILD
       - RUNTIME
 
+  - variable: RUNWARE_API_KEY
+    secret: RUNWARE_API_KEY
+    availability:
+      - RUNTIME
+
   - variable: DISABLE_GENERATION
     value: "false"
     availability:
