@@ -11,12 +11,12 @@ describe("Firebase email verification settings", () => {
       getEmailVerificationContinueUrl("http://localhost:3000", {
         NEXT_PUBLIC_APP_URL: "https://wallpack.example"
       })
-    ).toBe("https://wallpack.example/auth/sign-in");
+    ).toBe("https://wallpack.example/app");
   });
 
   it("falls back to the current origin", () => {
     expect(getEmailVerificationContinueUrl("http://localhost:3000", {})).toBe(
-      "http://localhost:3000/auth/sign-in"
+      "http://localhost:3000/app"
     );
   });
 
@@ -24,7 +24,7 @@ describe("Firebase email verification settings", () => {
     expect(
       getEmailVerificationActionCodeSettings("http://localhost:3000", {})
     ).toEqual({
-      url: "http://localhost:3000/auth/sign-in",
+      url: "http://localhost:3000/app",
       handleCodeInApp: false
     });
   });

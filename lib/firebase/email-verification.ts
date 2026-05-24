@@ -4,7 +4,7 @@ type PublicAppEnv = {
   NEXT_PUBLIC_APP_URL?: string;
 };
 
-const verificationReturnPath = "/auth/sign-in";
+const verificationReturnPath = "/app";
 
 export function getEmailVerificationActionCodeSettings(
   currentOrigin: string,
