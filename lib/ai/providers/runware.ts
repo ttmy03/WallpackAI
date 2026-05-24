@@ -14,7 +14,6 @@ type RunwareImageTask = {
   taskUUID: string;
   model: string;
   positivePrompt: string;
-  negativePrompt?: string;
   width: number;
   height: number;
   numberResults: number;
@@ -90,17 +89,16 @@ export class RunwareImageProvider implements ImageProvider {
     );
 
     if (!response.ok) {
-      throw new Error(`Runware image request failed with HTTP ${response.status}`);
+      const message = await readRunwareHttpError(response);
+      throw new Error(
+        `Runware image request failed with HTTP ${response.status}: ${message}`
+      );
     }
 
     const json = (await response.json()) as RunwareImageResponse;
 
     if (json.errors?.length) {
-      throw new Error(
-        json.errors
-          .map((error) => error.message ?? error.code ?? "Runware error")
-          .join("; ")
-      );
+      throw new Error(formatRunwareErrors(json.errors));
     }
 
     const outputs = json.data ?? [];
@@ -144,8 +142,9 @@ export function buildRunwareImageTask(
     taskType: "imageInference",
     taskUUID: options.taskUUID ?? randomUUID(),
     model: options.airId ?? RUNWARE_SEEDREAM_AIR_ID,
-    positivePrompt: input.prompt,
-    negativePrompt: input.negativePrompt,
+    positivePrompt: input.negativePrompt
+      ? `${input.prompt}\n\nAvoid: ${input.negativePrompt}`
+      : input.prompt,
     width: dimensions.width,
     height: dimensions.height,
     numberResults,
@@ -162,6 +161,36 @@ export function buildRunwareImageTask(
       }
     }
   };
+}
+
+function formatRunwareErrors(errors: NonNullable<RunwareImageResponse["errors"]>) {
+  return errors
+    .map((error) => {
+      const message = error.message ?? error.code ?? "Runware error";
+
+      return error.parameter ? `${message} (${error.parameter})` : message;
+    })
+    .join("; ");
+}
+
+async function readRunwareHttpError(response: Response) {
+  const text = await response.text().catch(() => "");
+
+  if (!text) {
+    return response.statusText || "Runware rejected the request.";
+  }
+
+  try {
+    const json = JSON.parse(text) as RunwareImageResponse;
+
+    if (json.errors?.length) {
+      return formatRunwareErrors(json.errors);
+    }
+  } catch {
+    // Fall through to a compact text body below.
+  }
+
+  return text.slice(0, 500);
 }
 
 export function resolveRunwareDimensions(input: {

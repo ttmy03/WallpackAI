@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildRunwareImageTask,
+  RunwareImageProvider,
   resolveRunwareDimensions,
   RUNWARE_SEEDREAM_AIR_ID
 } from "@/lib/ai/providers/runware";
@@ -23,7 +24,8 @@ describe("Runware image provider", () => {
     expect(task.numberResults).toBe(2);
     expect(task.width).toBe(1664);
     expect(task.height).toBe(2496);
-    expect(task.negativePrompt).toBe("text, logo");
+    expect(task).not.toHaveProperty("negativePrompt");
+    expect(task.positivePrompt).toContain("Avoid: text, logo");
   });
 
   it("maps common Etsy ratios to Seedream-compatible dimensions", () => {
@@ -40,6 +42,35 @@ describe("Runware image provider", () => {
   it("rejects dimensions below Seedream 4.5 minimum area", () => {
     expect(() => resolveRunwareDimensions({ width: 1024, height: 1024 })).toThrow(
       /3,686,400/
+    );
+  });
+
+  it("surfaces Runware HTTP error details without hiding them behind the status", async () => {
+    const provider = new RunwareImageProvider({
+      apiKey: "test-key",
+      fetcher: async () =>
+        new Response(
+          JSON.stringify({
+            errors: [
+              {
+                code: "invalidParameter",
+                message: "negativePrompt is not allowed",
+                parameter: "negativePrompt"
+              }
+            ]
+          }),
+          { status: 400 }
+        )
+    });
+
+    await expect(
+      provider.generate({
+        prompt: "printable wall art",
+        count: 1,
+        aspectRatio: "2x3"
+      })
+    ).rejects.toThrow(
+      /HTTP 400: negativePrompt is not allowed \(negativePrompt\)/
     );
   });
 });
