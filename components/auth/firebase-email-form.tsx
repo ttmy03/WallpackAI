@@ -10,6 +10,7 @@ import { FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getFriendlyFirebaseAuthError } from "@/lib/firebase/auth-errors";
 import { getFirebaseClientAnalytics, getFirebaseClientAuth } from "@/lib/firebase/client";
 
 type FirebaseEmailFormProps = {
@@ -86,29 +87,4 @@ export function FirebaseEmailForm({ mode }: FirebaseEmailFormProps) {
       </Button>
     </form>
   );
-}
-
-function getFriendlyFirebaseAuthError(error: unknown) {
-  const code =
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    typeof error.code === "string"
-      ? error.code
-      : null;
-
-  switch (code) {
-    case "auth/email-already-in-use":
-      return "This email already has an account.";
-    case "auth/invalid-credential":
-    case "auth/wrong-password":
-    case "auth/user-not-found":
-      return "Email or password is incorrect.";
-    case "auth/weak-password":
-      return "Use a password with at least 6 characters.";
-    case "auth/configuration-not-found":
-      return "Firebase Auth is not enabled for this project yet.";
-    default:
-      return "Firebase could not complete this request.";
-  }
 }
