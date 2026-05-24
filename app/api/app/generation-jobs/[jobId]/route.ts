@@ -33,7 +33,7 @@ export async function GET(
   }
 
   const { jobId } = await params;
-  const job = getLocalGenerationJobForUser(jobId, user.firebaseUid);
+  const job = await getLocalGenerationJobForUser(jobId, user.firebaseUid);
 
   if (!job) {
     return NextResponse.json(

@@ -4,12 +4,15 @@ export type GenerationQuality = "draft" | "standard" | "premium";
 
 export type GeneratedArtworkPreview = {
   artworkId: string;
-  dataUrl: string;
+  dataUrl?: string;
+  previewUrl?: string;
+  previewUrlExpiresAt?: string;
   width: number;
   height: number;
   mimeType: "image/png" | "image/jpeg" | "image/webp";
   providerRequestId?: string;
   sourceStoragePath: string;
+  previewStoragePath?: string;
   createdAt: string;
 };
 

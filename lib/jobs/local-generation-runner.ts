@@ -7,14 +7,24 @@ import {
   InMemoryCreditLedger,
   InsufficientCreditsError
 } from "@/lib/billing/credit-ledger";
+import {
+  getFirestoreGenerationJobForUser,
+  saveFirestoreGenerationJob
+} from "@/lib/firestore/generation-jobs";
+import {
+  markFirestoreProjectGenerated,
+  markFirestoreProjectGenerating
+} from "@/lib/firestore/projects";
 import type {
   GeneratedArtworkPreview,
   GenerationJobView,
   GenerationQuality
 } from "@/lib/jobs/generation-types";
 import type { JobStatus } from "@/lib/jobs/job-runner";
+import { sanitizeFilename } from "@/lib/print/filenames";
 import { buildWallArtPrompt } from "@/lib/prompts/builder";
 import { promptInputSchema, type PromptInput } from "@/lib/prompts/schema";
+import { getStorageProvider } from "@/lib/storage";
 
 type LocalGenerationJob = {
   id: string;
@@ -116,6 +126,9 @@ export async function enqueueLocalGenerationJob(
   };
 
   state.jobs.set(job.id, job);
+  await persistGenerationJob(job);
+  await persistProjectGenerating(job);
+
   setTimeout(() => {
     void processLocalGenerationJob(job.id);
   }, 0);
@@ -127,14 +140,14 @@ export async function enqueueLocalGenerationJob(
   };
 }
 
-export function getLocalGenerationJobForUser(jobId: string, userId: string) {
+export async function getLocalGenerationJobForUser(jobId: string, userId: string) {
   const job = state.jobs.get(jobId);
 
-  if (!job || job.userId !== userId) {
-    return null;
+  if (job?.userId === userId) {
+    return toGenerationJobView(job);
   }
 
-  return toGenerationJobView(job);
+  return getFirestoreGenerationJobForUser(jobId, userId);
 }
 
 export async function waitForLocalGenerationJob(
@@ -173,6 +186,7 @@ async function processLocalGenerationJob(jobId: string) {
   job.status = "validating";
   job.stage = "credit_reservation";
   job.startedAt = new Date();
+  await persistGenerationJob(job);
 
   try {
     ensureDevCredits(job.userId);
@@ -184,9 +198,11 @@ async function processLocalGenerationJob(jobId: string) {
       relatedJobId: job.id
     });
     job.creditReserved = true;
+    await persistGenerationJob(job);
 
     job.status = "running";
     job.stage = "provider_generation";
+    await persistGenerationJob(job);
 
     const images = await getImageProvider().generate({
       prompt: job.prompt,
@@ -197,13 +213,19 @@ async function processLocalGenerationJob(jobId: string) {
 
     job.status = "processing";
     job.stage = "preview_packaging";
-    job.artworks = images.map((image, index) =>
+    await persistGenerationJob(job);
+    job.status = "uploading";
+    job.stage = "storage_upload";
+    await persistGenerationJob(job);
+    job.artworks = await Promise.all(
+      images.map((image, index) =>
       toArtworkPreview(image, {
         index,
         userId: job.userId,
         projectId: job.projectId,
         jobId: job.id
       })
+      )
     );
 
     state.ledger.commit({
@@ -216,6 +238,8 @@ async function processLocalGenerationJob(jobId: string) {
     job.status = "succeeded";
     job.stage = "complete";
     job.completedAt = new Date();
+    await persistGenerationJob(job);
+    await persistProjectGenerated(job, "ready");
   } catch (error) {
     if (job.creditReserved && !job.creditCommitted) {
       state.ledger.refund({
@@ -237,6 +261,8 @@ async function processLocalGenerationJob(jobId: string) {
       error instanceof Error ? error.message : "Generation failed unexpectedly.";
     job.retryable = !(error instanceof InsufficientCreditsError);
     job.completedAt = new Date();
+    await persistGenerationJob(job).catch(() => undefined);
+    await persistProjectGenerated(job, "failed").catch(() => undefined);
   }
 }
 
@@ -249,11 +275,47 @@ function ensureDevCredits(userId: string) {
   });
 }
 
-function toArtworkPreview(
+async function toArtworkPreview(
   image: GeneratedImage,
   input: { index: number; userId: string; projectId: string; jobId: string }
-): GeneratedArtworkPreview {
+): Promise<GeneratedArtworkPreview> {
   const artworkId = `art_${randomUUID()}`;
+  const extension = extensionFromMimeType(image.mimeType);
+  const storagePath = [
+    "sources",
+    safeStorageSegment(input.userId),
+    safeStorageSegment(input.projectId),
+    safeStorageSegment(artworkId),
+    `source-${input.index + 1}.${extension}`
+  ].join("/");
+
+  if (process.env.NODE_ENV !== "test") {
+    await getStorageProvider().uploadObject({
+      path: storagePath,
+      bytes: image.bytes,
+      contentType: image.mimeType,
+      metadata: {
+        projectId: input.projectId,
+        generationJobId: input.jobId,
+        artworkId,
+        providerRequestId: image.providerRequestId ?? ""
+      }
+    });
+    const signedUrl = await getStorageProvider().createSignedDownloadUrl(storagePath);
+
+    return {
+      artworkId,
+      previewUrl: signedUrl.url,
+      previewUrlExpiresAt: signedUrl.expiresAt.toISOString(),
+      width: image.width,
+      height: image.height,
+      mimeType: image.mimeType,
+      providerRequestId: image.providerRequestId,
+      sourceStoragePath: storagePath,
+      previewStoragePath: storagePath,
+      createdAt: new Date().toISOString()
+    };
+  }
 
   return {
     artworkId,
@@ -264,14 +326,8 @@ function toArtworkPreview(
     height: image.height,
     mimeType: image.mimeType,
     providerRequestId: image.providerRequestId,
-    sourceStoragePath: [
-      "local",
-      "sources",
-      input.userId,
-      input.projectId,
-      artworkId,
-      `preview-${input.index + 1}-${input.jobId}`
-    ].join("/"),
+    sourceStoragePath: storagePath,
+    previewStoragePath: storagePath,
     createdAt: new Date().toISOString()
   };
 }
@@ -312,4 +368,51 @@ function clampPreviewCount(value: number) {
 function readPositiveIntegerEnv(name: string, fallback: number) {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+async function persistGenerationJob(job: LocalGenerationJob) {
+  await saveFirestoreGenerationJob(toGenerationJobView(job), { userId: job.userId });
+}
+
+async function persistProjectGenerating(job: LocalGenerationJob) {
+  if (process.env.NODE_ENV === "test") {
+    return;
+  }
+
+  await markFirestoreProjectGenerating({
+    projectId: job.projectId,
+    userId: job.userId,
+    generationJobId: job.id
+  });
+}
+
+async function persistProjectGenerated(
+  job: LocalGenerationJob,
+  status: "ready" | "failed"
+) {
+  if (process.env.NODE_ENV === "test") {
+    return;
+  }
+
+  await markFirestoreProjectGenerated({
+    projectId: job.projectId,
+    userId: job.userId,
+    status
+  });
+}
+
+function extensionFromMimeType(mimeType: GeneratedImage["mimeType"]) {
+  if (mimeType === "image/jpeg") {
+    return "jpg";
+  }
+
+  if (mimeType === "image/webp") {
+    return "webp";
+  }
+
+  return "png";
+}
+
+function safeStorageSegment(value: string) {
+  return sanitizeFilename(value, "wallpack").replaceAll(".", "-");
 }

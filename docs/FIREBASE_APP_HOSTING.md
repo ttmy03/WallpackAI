@@ -23,6 +23,13 @@ This project is a Next.js App Router app with API routes, so Firebase App Hostin
 - First build is ready:
   `build-2026-05-24-000`
 - First rollout succeeded and the App Hosting URL returns `HTTP 200`.
+- Cloud Firestore default database exists:
+  `projects/wallpackai/databases/(default)`
+- Firestore location:
+  `europe-west4`
+- Firestore delete protection is enabled.
+- Firestore rules and indexes are managed from:
+  `firestore.rules` and `firestore.indexes.json`
 
 ## GitHub Repository Connection
 
@@ -83,3 +90,33 @@ WallPack AI uses Google as the only Firebase Auth sign-in provider:
 3. Enable Google.
 4. Go to Authentication > Settings > Authorized domains.
 5. Add `wallpackai-web--wallpackai.europe-west4.hosted.app`.
+
+## Firestore Persistence
+
+WallPack AI now uses Firestore for account-scoped app metadata:
+
+```txt
+users/{firebaseUid}
+projects/{projectId}
+generationJobs/{jobId}
+artworks/{artworkId}
+creditLedgerEntries/{entryId}
+```
+
+Firebase Auth remains the source of identity. Server routes verify the Firebase
+ID token, upsert `users/{firebaseUid}`, and then read/write Firestore documents
+with `userId = firebaseUid`.
+
+Generated image bytes are not stored in Firestore. Source images are uploaded to
+Firebase Storage under user-scoped paths, and Firestore stores storage paths,
+dimensions, job status, errors, and retry metadata.
+
+Firestore client writes are denied by rules. The Next.js server writes through
+Firebase Admin after token verification. Authenticated users may read their own
+documents if a future client-side reader is added.
+
+Deploy Firestore rules and indexes with:
+
+```bash
+firebase deploy --only firestore --project wallpackai --non-interactive
+```

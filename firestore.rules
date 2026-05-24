@@ -1,0 +1,42 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsResource() {
+      return signedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    match /projects/{projectId} {
+      allow read: if ownsResource();
+      allow write: if false;
+    }
+
+    match /generationJobs/{jobId} {
+      allow read: if ownsResource();
+      allow write: if false;
+    }
+
+    match /artworks/{artworkId} {
+      allow read: if ownsResource();
+      allow write: if false;
+    }
+
+    match /creditLedgerEntries/{entryId} {
+      allow read: if ownsResource();
+      allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

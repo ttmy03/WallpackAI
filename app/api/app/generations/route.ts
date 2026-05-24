@@ -4,6 +4,11 @@ import { z } from "zod";
 import { fail, ok } from "@/lib/api-response";
 import { getFirebaseUserFromRequest } from "@/lib/auth/firebase-auth";
 import { isGoogleSignInProvider } from "@/lib/firebase/google-auth";
+import {
+  createFirestoreProject,
+  getFirestoreProjectForUser
+} from "@/lib/firestore/projects";
+import { upsertFirestoreUserFromSession } from "@/lib/firestore/users";
 import { enqueueLocalGenerationJob } from "@/lib/jobs/local-generation-runner";
 import { promptInputSchema } from "@/lib/prompts/schema";
 
@@ -49,10 +54,29 @@ export async function POST(request: Request) {
     );
   }
 
+  const firestoreUser = await upsertFirestoreUserFromSession(user);
+  const project = parsed.data.projectId
+    ? await getFirestoreProjectForUser(firestoreUser.id, parsed.data.projectId)
+    : await createFirestoreProject({
+        userId: firestoreUser.id,
+        name:
+          parsed.data.projectName ??
+          parsed.data.promptInputs.packName ??
+          parsed.data.promptInputs.subject,
+        promptInputs: parsed.data.promptInputs
+      });
+
+  if (!project) {
+    return NextResponse.json(
+      fail("PROJECT_NOT_FOUND", "Project was not found for this account."),
+      { status: 404 }
+    );
+  }
+
   const result = await enqueueLocalGenerationJob({
-    userId: user.firebaseUid,
-    projectId: parsed.data.projectId,
-    projectName: parsed.data.projectName,
+    userId: firestoreUser.id,
+    projectId: project.id,
+    projectName: project.name,
     promptInputs: parsed.data.promptInputs,
     previewCount: parsed.data.previewCount,
     quality: parsed.data.quality

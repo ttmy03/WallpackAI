@@ -14,6 +14,7 @@ export type JobStatus =
 export type GenerationJobInput = {
   userId: string;
   projectId: string;
+  projectName?: string;
   previewCount: number;
   promptInputs?: PromptInput;
   quality?: GenerationQuality;

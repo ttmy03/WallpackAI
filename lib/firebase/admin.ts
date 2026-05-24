@@ -8,6 +8,7 @@ import {
   type ServiceAccount
 } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
+import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getStorage, type Storage } from "firebase-admin/storage";
 
 let app: App | null = null;
@@ -51,6 +52,16 @@ export function getFirebaseAuth(): Auth {
 
 export function getFirebaseStorage(): Storage {
   return getStorage(getFirebaseAdminApp());
+}
+
+export function getFirebaseFirestore(): Firestore {
+  const databaseId = process.env.FIRESTORE_DATABASE_ID;
+
+  if (databaseId) {
+    return getFirestore(getFirebaseAdminApp(), databaseId);
+  }
+
+  return getFirestore(getFirebaseAdminApp());
 }
 
 function getFirebaseCredential() {

@@ -484,24 +484,34 @@ export function ProjectWizard() {
 
                   {generationJob?.artworks.length ? (
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      {generationJob.artworks.map((artwork, index) => (
-                        <figure
-                          key={artwork.artworkId}
-                          className="overflow-hidden rounded-md border bg-secondary"
-                        >
-                          <Image
-                            src={artwork.dataUrl}
-                            alt={`Generated wall-art preview ${index + 1}`}
-                            width={artwork.width}
-                            height={artwork.height}
-                            unoptimized
-                            className="aspect-[2/3] w-full object-cover"
-                          />
-                          <figcaption className="border-t px-3 py-2 font-mono text-xs text-muted-foreground">
-                            {artwork.width} x {artwork.height} px
-                          </figcaption>
-                        </figure>
-                      ))}
+                      {generationJob.artworks.map((artwork, index) => {
+                        const previewSrc = artwork.dataUrl ?? artwork.previewUrl;
+
+                        return (
+                          <figure
+                            key={artwork.artworkId}
+                            className="overflow-hidden rounded-md border bg-secondary"
+                          >
+                            {previewSrc ? (
+                              <Image
+                                src={previewSrc}
+                                alt={`Generated wall-art preview ${index + 1}`}
+                                width={artwork.width}
+                                height={artwork.height}
+                                unoptimized
+                                className="aspect-[2/3] w-full object-cover"
+                              />
+                            ) : (
+                              <div className="grid aspect-[2/3] place-items-center text-sm text-muted-foreground">
+                                Preview pending
+                              </div>
+                            )}
+                            <figcaption className="border-t px-3 py-2 font-mono text-xs text-muted-foreground">
+                              {artwork.width} x {artwork.height} px
+                            </figcaption>
+                          </figure>
+                        );
+                      })}
                     </div>
                   ) : null}
                 </div>
