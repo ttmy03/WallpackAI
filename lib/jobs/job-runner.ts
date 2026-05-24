@@ -1,3 +1,6 @@
+import type { GenerationQuality } from "@/lib/jobs/generation-types";
+import type { PromptInput } from "@/lib/prompts/schema";
+
 export type JobStatus =
   | "queued"
   | "validating"
@@ -12,6 +15,8 @@ export type GenerationJobInput = {
   userId: string;
   projectId: string;
   previewCount: number;
+  promptInputs?: PromptInput;
+  quality?: GenerationQuality;
 };
 
 export type ExportJobInput = {

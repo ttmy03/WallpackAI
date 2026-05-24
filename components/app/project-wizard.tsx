@@ -1,8 +1,19 @@
 "use client";
 
-import { AlertTriangle, Check, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
-import { useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  ImageIcon,
+  Loader2,
+  RefreshCw,
+  Sparkles
+} from "lucide-react";
+import Image from "next/image";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useFirebaseAuthUser } from "@/components/auth/use-firebase-auth-user";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +26,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import type { ApiResponse } from "@/lib/api-response";
+import type { GenerationJobView } from "@/lib/jobs/generation-types";
 import { presetKeyToPixels } from "@/lib/print/math";
 import { DEFAULT_PRINT_RATIO_KEYS } from "@/lib/print/presets";
 import { buildWallArtPrompt, PromptBlockedError } from "@/lib/prompts/builder";
@@ -24,6 +37,13 @@ import { type PromptInput, promptInputSchema } from "@/lib/prompts/schema";
 import { cn } from "@/lib/utils";
 
 const steps = ["Concept", "Style", "Palette", "Composition", "Generate"];
+const terminalGenerationStatuses = new Set(["succeeded", "failed", "cancelled"]);
+
+type QueueGenerationResponse = {
+  jobId: string;
+  status: GenerationJobView["status"];
+  projectId: string;
+};
 
 const starterInput: PromptInput = {
   packName: "Japandi Mountain Set",
@@ -47,8 +67,15 @@ const compositionOptions = [
 ];
 
 export function ProjectWizard() {
+  const { state: authState } = useFirebaseAuthUser();
   const [step, setStep] = useState(0);
   const [input, setInput] = useState<PromptInput>(starterInput);
+  const [generationJob, setGenerationJob] = useState<GenerationJobView | null>(
+    null
+  );
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [isQueueingGeneration, setIsQueueingGeneration] = useState(false);
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const result = useMemo(() => {
     const parsed = promptInputSchema.safeParse(input);
@@ -79,6 +106,100 @@ export function ProjectWizard() {
     key,
     pixels: presetKeyToPixels(key)
   }));
+
+  useEffect(() => {
+    return () => {
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const pollGenerationJob = useCallback(
+    async function pollGenerationJob(jobId: string, token: string) {
+      const response = await fetch(`/api/app/generation-jobs/${jobId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const payload = (await response.json()) as ApiResponse<GenerationJobView>;
+
+      if (!payload.ok) {
+        throw new Error(payload.error.message);
+      }
+
+      setGenerationJob(payload.data);
+
+      if (!terminalGenerationStatuses.has(payload.data.status)) {
+        pollTimeoutRef.current = setTimeout(() => {
+          void pollGenerationJob(jobId, token).catch((error: unknown) => {
+            setGenerationError(
+              error instanceof Error
+                ? error.message
+                : "Generation status could not be loaded."
+            );
+          });
+        }, 1200);
+      }
+    },
+    []
+  );
+
+  async function handleGenerate() {
+    if (!result.ok || isQueueingGeneration) {
+      return;
+    }
+
+    if (authState.status !== "ready" || !authState.user) {
+      setGenerationError("Sign in with Google before generating previews.");
+      return;
+    }
+
+    setGenerationError(null);
+    setGenerationJob(null);
+    setIsQueueingGeneration(true);
+
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current);
+    }
+
+    try {
+      const token = await authState.user.getIdToken();
+      const response = await fetch("/api/app/generations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          projectName: input.packName,
+          promptInputs: input,
+          previewCount: 2,
+          quality: "draft"
+        })
+      });
+      const payload =
+        (await response.json()) as ApiResponse<QueueGenerationResponse>;
+
+      if (!payload.ok) {
+        throw new Error(payload.error.message);
+      }
+
+      await pollGenerationJob(payload.data.jobId, token);
+    } catch (error) {
+      setGenerationError(
+        error instanceof Error ? error.message : "Generation could not be started."
+      );
+    } finally {
+      setIsQueueingGeneration(false);
+    }
+  }
+
+  const isGenerationRunning =
+    isQueueingGeneration ||
+    Boolean(
+      generationJob && !terminalGenerationStatuses.has(generationJob.status)
+    );
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -307,6 +428,84 @@ export function ProjectWizard() {
                   ) : null}
                 </div>
               ) : null}
+              {generationJob || generationError || isQueueingGeneration ? (
+                <div className="rounded-lg border p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <ImageIcon className="size-4 text-primary" />
+                      <p className="font-medium">Preview generation</p>
+                    </div>
+                    <Badge
+                      variant={
+                        generationJob?.status === "failed"
+                          ? "warning"
+                          : generationJob?.status === "succeeded"
+                            ? "default"
+                            : "secondary"
+                      }
+                    >
+                      {generationJob?.status ?? "queueing"}
+                    </Badge>
+                  </div>
+
+                  {generationJob ? (
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      {generationJob.stage ?? "queued"} ·{" "}
+                      {generationJob.creditCost} credits
+                      {generationJob.creditCommitted ? " committed" : " reserved"}
+                    </p>
+                  ) : null}
+
+                  {generationError ? (
+                    <div className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                      {generationError}
+                    </div>
+                  ) : null}
+
+                  {generationJob?.errorMessage ? (
+                    <div className="mt-4 grid gap-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
+                      <p className="text-destructive">
+                        {generationJob.errorMessage}
+                      </p>
+                      {generationJob.retryable ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-fit"
+                          disabled={isGenerationRunning}
+                          onClick={handleGenerate}
+                        >
+                          <RefreshCw />
+                          Retry
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {generationJob?.artworks.length ? (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      {generationJob.artworks.map((artwork, index) => (
+                        <figure
+                          key={artwork.artworkId}
+                          className="overflow-hidden rounded-md border bg-secondary"
+                        >
+                          <Image
+                            src={artwork.dataUrl}
+                            alt={`Generated wall-art preview ${index + 1}`}
+                            width={artwork.width}
+                            height={artwork.height}
+                            unoptimized
+                            className="aspect-[2/3] w-full object-cover"
+                          />
+                          <figcaption className="border-t px-3 py-2 font-mono text-xs text-muted-foreground">
+                            {artwork.width} x {artwork.height} px
+                          </figcaption>
+                        </figure>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -331,9 +530,19 @@ export function ProjectWizard() {
                 <ChevronRight />
               </Button>
             ) : (
-              <Button type="button" disabled={!result.ok}>
-                <Sparkles />
-                Generate 2 previews - uses 2 credits
+              <Button
+                type="button"
+                disabled={!result.ok || isGenerationRunning}
+                onClick={handleGenerate}
+              >
+                {isGenerationRunning ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
+                  <Sparkles />
+                )}
+                {isGenerationRunning
+                  ? "Generating previews"
+                  : "Generate 2 previews - uses 2 credits"}
               </Button>
             )}
           </div>
