@@ -9,7 +9,10 @@ import {
   listFirestoreArtworksForProject,
   listFirestoreGenerationJobsForUser
 } from "@/lib/firestore/generation-jobs";
-import { getFirestoreProjectForUser } from "@/lib/firestore/projects";
+import {
+  deleteFirestoreProjectForUser,
+  getFirestoreProjectForUser
+} from "@/lib/firestore/projects";
 
 export async function GET(
   request: Request,
@@ -60,4 +63,30 @@ export async function GET(
   };
 
   return NextResponse.json(ok(data));
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ projectId: string }> }
+) {
+  const auth = await requireAppUser(request, "deleting projects");
+
+  if (!auth.ok) {
+    return auth.response;
+  }
+
+  const { projectId } = await params;
+  const deleted = await deleteFirestoreProjectForUser({
+    userId: auth.firestoreUser.id,
+    projectId
+  });
+
+  if (!deleted) {
+    return NextResponse.json(
+      fail("PROJECT_NOT_FOUND", "Project was not found for this account."),
+      { status: 404 }
+    );
+  }
+
+  return NextResponse.json(ok({ projectId, deleted: true }));
 }

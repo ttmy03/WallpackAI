@@ -6,6 +6,7 @@ import {
   projectDocumentPath
 } from "@/lib/firestore/collections";
 import type { PromptInput } from "@/lib/prompts/schema";
+import { getStorageProvider } from "@/lib/storage";
 
 export type FirestoreProject = {
   id: string;
@@ -89,6 +90,63 @@ export async function listFirestoreProjectsForUser(userId: string) {
     .filter((project) => project.userId === userId)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .map(projectToCard);
+}
+
+export async function deleteFirestoreProjectForUser(input: {
+  userId: string;
+  projectId: string;
+}) {
+  const project = await getFirestoreProjectForUser(input.userId, input.projectId);
+
+  if (!project) {
+    return false;
+  }
+
+  const db = getFirebaseFirestore();
+  const [artworks, generationJobs, exportJobs] = await Promise.all([
+    db
+      .collection(FIRESTORE_COLLECTIONS.artworks)
+      .where("userId", "==", input.userId)
+      .get(),
+    db
+      .collection(FIRESTORE_COLLECTIONS.generationJobs)
+      .where("userId", "==", input.userId)
+      .get(),
+    db
+      .collection(FIRESTORE_COLLECTIONS.exportJobs)
+      .where("userId", "==", input.userId)
+      .get()
+  ]);
+  const artworkDocs = filterProjectDocuments(artworks.docs, input.projectId);
+  const generationJobDocs = filterProjectDocuments(
+    generationJobs.docs,
+    input.projectId
+  );
+  const exportJobDocs = filterProjectDocuments(exportJobs.docs, input.projectId);
+  const storagePaths = [
+    ...artworkDocs.flatMap((doc) => [
+      nullableString(doc.data().sourceStoragePath),
+      nullableString(doc.data().previewStoragePath)
+    ]),
+    ...exportJobDocs.flatMap((doc) => artifactStoragePaths(doc.data().artifacts))
+  ].filter((path): path is string => typeof path === "string" && path.length > 0);
+
+  await Promise.all(
+    [...new Set(storagePaths)].map((path) =>
+      getStorageProvider().deleteObject(path).catch(() => undefined)
+    )
+  );
+
+  const batch = db.batch();
+
+  for (const doc of [...artworkDocs, ...generationJobDocs, ...exportJobDocs]) {
+    batch.delete(doc.ref);
+  }
+
+  batch.delete(db.doc(projectDocumentPath(input.projectId)));
+  await batch.commit();
+
+  return true;
 }
 
 export async function markFirestoreProjectGenerating(input: {
@@ -177,6 +235,29 @@ function projectToCard(project: FirestoreProject): ProjectCard {
     stylePresetKey: project.stylePresetKey,
     updatedAt: project.updatedAt
   };
+}
+
+function filterProjectDocuments(
+  docs: FirebaseFirestore.QueryDocumentSnapshot[],
+  projectId: string
+) {
+  return docs.filter((doc) => doc.data().projectId === projectId);
+}
+
+function artifactStoragePaths(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((artifact) =>
+      typeof artifact === "object" &&
+      artifact !== null &&
+      typeof (artifact as { storagePath?: unknown }).storagePath === "string"
+        ? (artifact as { storagePath: string }).storagePath
+        : null
+    )
+    .filter((path): path is string => typeof path === "string");
 }
 
 function projectStatusOrFallback(value: unknown): FirestoreProject["status"] {

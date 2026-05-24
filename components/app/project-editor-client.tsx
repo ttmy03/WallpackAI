@@ -1,7 +1,8 @@
 "use client";
 
-import { Download, Loader2, RotateCcw, Sparkles, XCircle } from "lucide-react";
+import { Download, Loader2, Sparkles, XCircle } from "lucide-react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { fetchAuthenticatedApi } from "@/components/app/authenticated-api";
@@ -26,8 +27,7 @@ import {
 } from "@/components/ui/card";
 import type {
   ExportJobResponse,
-  ProjectDetail,
-  RetryGenerationResponse
+  ProjectDetail
 } from "@/lib/app/api-types";
 import type { ExportJobView } from "@/lib/jobs/export-types";
 import type { GeneratedArtworkPreview } from "@/lib/jobs/generation-types";
@@ -43,7 +43,7 @@ import {
 type ActionState = {
   message: string | null;
   error: string | null;
-  pending: "retry" | "cancel" | "export" | "retryExport" | null;
+  pending: "delete" | "export" | null;
 };
 
 const TERMINAL_EXPORT_STATUSES = new Set<ExportJobView["status"]>([
@@ -53,6 +53,7 @@ const TERMINAL_EXPORT_STATUSES = new Set<ExportJobView["status"]>([
 ]);
 
 export function ProjectEditorClient({ projectId }: { projectId: string }) {
+  const router = useRouter();
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedArtworkId, setSelectedArtworkId] = useState<string | null>(
@@ -239,14 +240,21 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     });
   }
 
-  async function retryExport(jobId: string) {
-    await runAction("retryExport", "Export retry queued.", async () => {
-      const result = await fetchAuthenticatedApi<ExportJobResponse>(
-        `/api/app/export-jobs/${jobId}/retry`,
-        { method: "POST" }
-      );
-      setActiveExportJobId(result.jobId);
-      await loadProject();
+  async function deleteProject() {
+    const confirmed = window.confirm(
+      "Delete this project and its generated files? This cannot be undone."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    await runAction("delete", "Project deleted.", async () => {
+      await fetchAuthenticatedApi(`/api/app/projects/${projectId}`, {
+        method: "DELETE"
+      });
+      router.push("/app/projects");
+      router.refresh();
     });
   }
 
@@ -254,9 +262,6 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     detail?.latestGenerationJob ?? detail?.generationJobs[0] ?? null;
   const latestExportJob =
     detail?.latestExportJob ?? detail?.exportJobs[0] ?? null;
-  const canRetry = latestJob?.status === "failed" && latestJob.retryable;
-  const canCancel =
-    latestJob?.status === "queued" || latestJob?.status === "validating";
   const exportRunning =
     latestExportJob && !TERMINAL_EXPORT_STATUSES.has(latestExportJob.status);
   const canCreateExport =
@@ -295,48 +300,17 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
-            variant="outline"
-            disabled={!canRetry || action.pending !== null}
-            onClick={() =>
-              latestJob
-                ? void runAction("retry", "Retry queued.", async () => {
-                    await fetchAuthenticatedApi<RetryGenerationResponse>(
-                      `/api/app/generation-jobs/${latestJob.jobId}/retry`,
-                      { method: "POST" }
-                    );
-                    await loadProject();
-                  })
-                : undefined
-            }
+            variant="destructive"
+            disabled={action.pending !== null}
+            onClick={() => void deleteProject()}
+            title="Delete this project and return to the project list."
           >
-            {action.pending === "retry" ? (
+            {action.pending === "delete" ? (
               <Loader2 className="animate-spin" />
             ) : (
-              <RotateCcw />
+              <XCircle />
             )}
-            Retry
-          </Button>
-          <Button
-            variant="outline"
-            disabled={!canCancel || action.pending !== null}
-            onClick={() =>
-              latestJob
-                ? void runAction(
-                    "cancel",
-                    "Generation cancelled.",
-                    async () => {
-                      await fetchAuthenticatedApi(
-                        `/api/app/generation-jobs/${latestJob.jobId}/cancel`,
-                        { method: "POST" }
-                      );
-                      await loadProject();
-                    }
-                  )
-                : undefined
-            }
-          >
-            <XCircle />
-            Cancel
+            Cancel Project
           </Button>
           <Button
             disabled={!canCreateExport}
@@ -463,11 +437,7 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
           ) : null}
 
           {latestExportJob ? (
-            <ExportJobPanel
-              job={latestExportJob}
-              pending={action.pending}
-              onRetry={() => void retryExport(latestExportJob.jobId)}
-            />
+            <ExportJobPanel job={latestExportJob} />
           ) : null}
         </section>
 
@@ -642,17 +612,8 @@ function ArtworkButton({
   );
 }
 
-function ExportJobPanel({
-  job,
-  pending,
-  onRetry
-}: {
-  job: ExportJobView;
-  pending: ActionState["pending"];
-  onRetry: () => void;
-}) {
+function ExportJobPanel({ job }: { job: ExportJobView }) {
   const running = !TERMINAL_EXPORT_STATUSES.has(job.status);
-  const canRetry = job.status === "failed" && job.retryable;
 
   return (
     <div className="mt-4 rounded-md border p-4 text-sm">
@@ -710,22 +671,6 @@ function ExportJobPanel({
         </div>
       ) : null}
 
-      {canRetry ? (
-        <Button
-          className="mt-4"
-          variant="outline"
-          size="sm"
-          disabled={pending !== null}
-          onClick={onRetry}
-        >
-          {pending === "retryExport" ? (
-            <Loader2 className="animate-spin" />
-          ) : (
-            <RotateCcw />
-          )}
-          Retry export
-        </Button>
-      ) : null}
     </div>
   );
 }
