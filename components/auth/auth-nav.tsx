@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut, MailWarning, UserCircle } from "lucide-react";
+import { LogOut, ShieldAlert, UserCircle } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { signOut } from "firebase/auth";
@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getFriendlyFirebaseAuthError } from "@/lib/firebase/auth-errors";
 import { getFirebaseClientAuth } from "@/lib/firebase/client";
+import { hasGoogleProvider } from "@/lib/firebase/google-auth";
 import { useFirebaseAuthUser } from "@/components/auth/use-firebase-auth-user";
 
 export function AuthNav() {
@@ -71,6 +72,8 @@ export function AuthNav() {
     );
   }
 
+  const isGoogleUser = hasGoogleProvider(state.user.providerData);
+
   return (
     <div className="flex min-w-0 items-center gap-2">
       <div className="hidden min-w-0 items-center gap-2 md:flex">
@@ -78,12 +81,12 @@ export function AuthNav() {
         <span className="max-w-44 truncate text-sm text-muted-foreground">
           {state.user.email ?? "Signed in"}
         </span>
-        <Badge variant={state.user.emailVerified ? "secondary" : "warning"}>
-          {state.user.emailVerified ? "Verified" : "Verify email"}
+        <Badge variant={isGoogleUser ? "secondary" : "warning"}>
+          {isGoogleUser ? "Google" : "Use Google"}
         </Badge>
       </div>
-      {!state.user.emailVerified ? (
-        <MailWarning className="size-4 text-accent md:hidden" aria-hidden />
+      {!isGoogleUser ? (
+        <ShieldAlert className="size-4 text-accent md:hidden" aria-hidden />
       ) : (
         <UserCircle className="size-4 text-muted-foreground md:hidden" />
       )}

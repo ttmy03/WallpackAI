@@ -15,6 +15,6 @@ test("landing page links into the authenticated app flow", async ({ page }) => {
     page.getByRole("heading", { name: /sign in required/i })
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: /^sign in$/i }).last()
+    page.getByRole("link", { name: /continue with google/i }).last()
   ).toBeVisible();
 });

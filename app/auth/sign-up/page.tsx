@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { FirebaseEmailForm } from "@/components/auth/firebase-email-form";
+import { FirebaseGoogleButton } from "@/components/auth/firebase-google-button";
 
 export default function SignUpPage() {
   return (
@@ -8,9 +8,9 @@ export default function SignUpPage() {
       <div className="w-full rounded-lg border bg-card p-6 shadow-sm">
         <h1 className="text-2xl font-semibold">Create account</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Create a Firebase Auth account for your seller workspace.
+          Create your seller workspace account with Google.
         </p>
-        <FirebaseEmailForm mode="sign-up" />
+        <FirebaseGoogleButton mode="sign-up" />
         <p className="mt-4 text-sm text-muted-foreground">
           Already have an account?{" "}
           <Link className="text-primary hover:underline" href="/auth/sign-in">

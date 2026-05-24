@@ -14,10 +14,8 @@ This project is a Next.js App Router app with API routes, so Firebase App Hostin
   `projects/wallpackai/locations/europe-west4/backends/wallpackai-web`
 - Backend URL:
   `https://wallpackai-web--wallpackai.europe-west4.hosted.app`
-- `NEXT_PUBLIC_APP_URL` is set in `apphosting.yaml` to the Backend URL so
-  Firebase Auth email verification returns users to the deployed app.
-- Firebase Auth email action handler:
-  `https://wallpackai-web--wallpackai.europe-west4.hosted.app/auth/action`
+- `NEXT_PUBLIC_APP_URL` is set in `apphosting.yaml` to the Backend URL.
+- Firebase Auth uses Google sign-in only.
 - GitHub repo exists and is pushed:
   `https://github.com/ttmy03/WallpackAI`
 - GitHub is connected to the App Hosting backend through Developer Connect:
@@ -76,17 +74,12 @@ Firebase App Hosting supports `apphosting.yaml` for runtime settings and environ
 
 App Hosting connects GitHub through Google Cloud Developer Connect and the Firebase GitHub App. That OAuth/GitHub App authorization flow is browser-based and cannot be completed purely by committing files to this repo.
 
-## Firebase Auth Email Verification
+## Firebase Auth Google Sign-In
 
-For email verification links to return directly to WallPack AI:
+WallPack AI uses Google as the only Firebase Auth sign-in provider:
 
 1. Open Firebase Console for project `wallpackai`.
-2. Go to Authentication > Settings > Authorized domains.
-3. Add `wallpackai-web--wallpackai.europe-west4.hosted.app`.
-4. Go to Authentication > Templates > Email address verification.
-5. Set the custom action URL to:
-   `https://wallpackai-web--wallpackai.europe-west4.hosted.app/auth/action`
-6. Save the template and send a new verification email.
-
-Existing verification emails keep the old link behavior. Use the in-app
-`Send email again` action after this configuration changes.
+2. Go to Authentication > Sign-in method.
+3. Enable Google.
+4. Go to Authentication > Settings > Authorized domains.
+5. Add `wallpackai-web--wallpackai.europe-west4.hosted.app`.

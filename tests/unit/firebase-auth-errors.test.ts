@@ -3,10 +3,16 @@ import { describe, expect, it } from "vitest";
 import { getFriendlyFirebaseAuthError } from "@/lib/firebase/auth-errors";
 
 describe("Firebase Auth error messages", () => {
-  it("explains disabled email/password auth", () => {
+  it("explains disabled Google auth", () => {
     expect(
       getFriendlyFirebaseAuthError({ code: "auth/operation-not-allowed" })
-    ).toBe("Email/password sign-in is not enabled in Firebase Authentication.");
+    ).toBe("Google sign-in is not enabled in Firebase Authentication.");
+  });
+
+  it("explains interrupted Google popups", () => {
+    expect(
+      getFriendlyFirebaseAuthError({ code: "auth/popup-closed-by-user" })
+    ).toBe("Google sign-in was closed before completion.");
   });
 
   it("explains unauthorized domains", () => {
@@ -15,12 +21,10 @@ describe("Firebase Auth error messages", () => {
     ).toBe("This domain is not authorized in Firebase Authentication.");
   });
 
-  it("explains unauthorized email verification return URLs", () => {
+  it("explains unauthorized Firebase Auth return URLs", () => {
     expect(
       getFriendlyFirebaseAuthError({ code: "auth/unauthorized-continue-uri" })
-    ).toBe(
-      "The email verification return URL is not authorized in Firebase Authentication."
-    );
+    ).toBe("The Firebase Auth return URL is not authorized.");
   });
 
   it("keeps unknown Firebase error codes visible", () => {

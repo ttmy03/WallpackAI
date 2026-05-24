@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { fail, ok } from "@/lib/api-response";
 import { getFirebaseUserFromRequest } from "@/lib/auth/firebase-auth";
+import { isGoogleSignInProvider } from "@/lib/firebase/google-auth";
 import { createProjectSchema } from "@/lib/validations/project";
 
 export async function GET() {
@@ -25,6 +26,16 @@ export async function POST(request: Request) {
     return NextResponse.json(
       fail("UNAUTHENTICATED", "A Firebase ID token is required."),
       { status: 401 }
+    );
+  }
+
+  if (!isGoogleSignInProvider(user.signInProvider)) {
+    return NextResponse.json(
+      fail(
+        "PROVIDER_NOT_ALLOWED",
+        "Sign in with Google before creating projects."
+      ),
+      { status: 403 }
     );
   }
 

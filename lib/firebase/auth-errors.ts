@@ -6,28 +6,34 @@ export function getFriendlyFirebaseAuthError(error: unknown) {
       return "This email already has an account.";
     case "auth/invalid-email":
       return "Enter a valid email address.";
+    case "auth/account-exists-with-different-credential":
+      return "This email is already linked to another sign-in method. Use Google for this WallPack AI account.";
     case "auth/invalid-credential":
     case "auth/wrong-password":
     case "auth/user-not-found":
-      return "Email or password is incorrect.";
+      return "Google could not confirm this account.";
     case "auth/weak-password":
       return "Use a password with at least 6 characters.";
     case "auth/configuration-not-found":
     case "auth/operation-not-allowed":
-      return "Email/password sign-in is not enabled in Firebase Authentication.";
+      return "Google sign-in is not enabled in Firebase Authentication.";
     case "auth/admin-restricted-operation":
       return "Firebase Auth sign-ups are restricted for this project.";
     case "auth/unauthorized-domain":
       return "This domain is not authorized in Firebase Authentication.";
     case "auth/unauthorized-continue-uri":
-      return "The email verification return URL is not authorized in Firebase Authentication.";
+      return "The Firebase Auth return URL is not authorized.";
     case "auth/invalid-continue-uri":
-      return "The email verification return URL is invalid.";
+      return "The Firebase Auth return URL is invalid.";
     case "auth/invalid-api-key":
     case "auth/api-key-not-valid.-please-pass-a-valid-api-key.":
       return "The Firebase web API key is not valid for this app.";
     case "auth/network-request-failed":
       return "Firebase could not be reached. Check the network connection and try again.";
+    case "auth/popup-blocked":
+      return "Allow pop-ups for this site, then try Google sign-in again.";
+    case "auth/popup-closed-by-user":
+      return "Google sign-in was closed before completion.";
     case "auth/too-many-requests":
       return "Firebase temporarily blocked this request. Try again later.";
     default:

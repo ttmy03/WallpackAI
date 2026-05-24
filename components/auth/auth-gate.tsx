@@ -1,9 +1,9 @@
 "use client";
 
-import { MailCheck, RefreshCw, LogOut } from "lucide-react";
+import { LogOut, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import { sendEmailVerification, signOut, type User } from "firebase/auth";
+import { signOut, type User } from "firebase/auth";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -15,11 +15,11 @@ import {
 } from "@/components/ui/card";
 import { getFriendlyFirebaseAuthError } from "@/lib/firebase/auth-errors";
 import { getFirebaseClientAuth } from "@/lib/firebase/client";
-import { getEmailVerificationActionCodeSettings } from "@/lib/firebase/email-verification";
+import { hasGoogleProvider } from "@/lib/firebase/google-auth";
 import { useFirebaseAuthUser } from "@/components/auth/use-firebase-auth-user";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
-  const { state, refreshUser } = useFirebaseAuthUser();
+  const { state } = useFirebaseAuthUser();
 
   if (state.status === "loading") {
     return (
@@ -50,76 +50,28 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             Sign in required
           </CardTitle>
           <CardDescription>
-            Sign in with Firebase Auth before creating Etsy wall-art packs.
+            Continue with Google before creating Etsy wall-art packs.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
+        <CardContent>
           <Button asChild>
-            <Link href="/auth/sign-in">Sign in</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/auth/sign-up">Create account</Link>
+            <Link href="/auth/sign-in">Continue with Google</Link>
           </Button>
         </CardContent>
       </Card>
     );
   }
 
-  if (!state.user.emailVerified) {
-    return (
-      <EmailVerificationRequired user={state.user} onRefresh={refreshUser} />
-    );
+  if (!hasGoogleProvider(state.user.providerData) || !state.user.emailVerified) {
+    return <GoogleAccountRequired user={state.user} />;
   }
 
   return children;
 }
 
-function EmailVerificationRequired({
-  user,
-  onRefresh
-}: {
-  user: User;
-  onRefresh: () => Promise<void>;
-}) {
-  const [message, setMessage] = useState<string | null>(null);
+function GoogleAccountRequired({ user }: { user: User }) {
   const [error, setError] = useState<string | null>(null);
-  const [isSending, setIsSending] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
-
-  async function handleSendVerification() {
-    setMessage(null);
-    setError(null);
-    setIsSending(true);
-
-    try {
-      await sendEmailVerification(
-        user,
-        getEmailVerificationActionCodeSettings(window.location.origin)
-      );
-      setMessage(
-        "Verification email sent. Check your inbox before continuing."
-      );
-    } catch (caughtError) {
-      setError(getFriendlyFirebaseAuthError(caughtError));
-    } finally {
-      setIsSending(false);
-    }
-  }
-
-  async function handleRefresh() {
-    setMessage(null);
-    setError(null);
-    setIsRefreshing(true);
-
-    try {
-      await onRefresh();
-    } catch (caughtError) {
-      setError(getFriendlyFirebaseAuthError(caughtError));
-    } finally {
-      setIsRefreshing(false);
-    }
-  }
 
   async function handleSignOut() {
     setError(null);
@@ -139,47 +91,28 @@ function EmailVerificationRequired({
       <CardHeader>
         <div className="flex items-start gap-3">
           <span className="grid size-10 shrink-0 place-items-center rounded-md bg-accent text-accent-foreground">
-            <MailCheck className="size-5" />
+            <ShieldAlert className="size-5" />
           </span>
           <div>
             <CardTitle role="heading" aria-level={1}>
-              Verify your email
+              Google account required
             </CardTitle>
             <CardDescription className="mt-2">
-              You are signed in as {user.email ?? "this Firebase user"}, but the
-              workspace opens after the email address is confirmed.
+              You are signed in as {user.email ?? "this Firebase user"}, but
+              WallPack AI only accepts Google sign-in.
             </CardDescription>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {message ? (
-          <p className="rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-sm text-primary">
-            {message}
-          </p>
-        ) : null}
         {error ? (
           <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             {error}
           </p>
         ) : null}
         <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            onClick={handleSendVerification}
-            disabled={isSending}
-          >
-            <MailCheck />
-            {isSending ? "Sending" : "Send email again"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-          >
-            <RefreshCw />
-            {isRefreshing ? "Checking" : "I verified it"}
+          <Button asChild>
+            <Link href="/auth/sign-in">Continue with Google</Link>
           </Button>
           <Button
             type="button"

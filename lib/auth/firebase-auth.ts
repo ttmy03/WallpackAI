@@ -4,6 +4,7 @@ export type FirebaseSessionUser = {
   firebaseUid: string;
   email: string | null;
   emailVerified: boolean;
+  signInProvider: string | null;
   name: string | null;
   picture: string | null;
 };
@@ -12,6 +13,9 @@ type DecodedFirebaseUser = {
   uid: string;
   email?: unknown;
   email_verified?: unknown;
+  firebase?: {
+    sign_in_provider?: unknown;
+  };
   name?: unknown;
   picture?: unknown;
 };
@@ -48,6 +52,10 @@ export function mapDecodedFirebaseUser(
     firebaseUid: decoded.uid,
     email: typeof decoded.email === "string" ? decoded.email : null,
     emailVerified: decoded.email_verified === true,
+    signInProvider:
+      typeof decoded.firebase?.sign_in_provider === "string"
+        ? decoded.firebase.sign_in_provider
+        : null,
     name: typeof decoded.name === "string" ? decoded.name : null,
     picture: typeof decoded.picture === "string" ? decoded.picture : null
   };

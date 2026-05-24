@@ -4,7 +4,7 @@
 
 ### 1. Auth and dashboard
 
-- Email/password or magic-link auth through Firebase Auth.
+- Google-only sign-in through Firebase Auth.
 - Basic dashboard with projects, credits, recent exports.
 - Settings page with billing and account deletion request placeholder.
 
