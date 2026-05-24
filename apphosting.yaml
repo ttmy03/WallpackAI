@@ -1,0 +1,94 @@
+# Firebase App Hosting configuration for the Next.js app.
+# Secret values such as RUNWARE_API_KEY and DATABASE_URL should be configured
+# in the Firebase App Hosting console or Cloud Secret Manager, not committed here.
+runConfig:
+  minInstances: 0
+  maxInstances: 10
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 1024
+
+env:
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: AIzaSyDg8c0MzZwe4c-nyDTzXWaR4kyksUZz3_E
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: wallpackai.firebaseapp.com
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: wallpackai
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: wallpackai.firebasestorage.app
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "352267033614"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: "1:352267033614:web:67390d78d670ca5982305f"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+    value: G-E38HP057TZ
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: FIREBASE_PROJECT_ID
+    value: wallpackai
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: IMAGE_PROVIDER
+    value: runware
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: RUNWARE_AIR_ID
+    value: bytedance:seedream@4.5
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: RUNWARE_API_URL
+    value: https://api.runware.ai/v1
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: DISABLE_GENERATION
+    value: "false"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: STORAGE_PROVIDER
+    value: firebase
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: EXPORT_SIGNED_URL_TTL_SECONDS
+    value: "900"
+    availability:
+      - BUILD
+      - RUNTIME
