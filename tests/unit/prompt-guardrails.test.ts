@@ -28,7 +28,15 @@ describe("prompt guardrails and builder", () => {
 
     expect(built.prompt).toContain("printable wall art");
     expect(built.prompt).toContain("central 80% safe area");
+    expect(built.prompt).toContain("flat, full-bleed printable image");
+    expect(built.prompt).toContain(
+      "Target Etsy buyer context only, not visual content"
+    );
+    expect(built.prompt).not.toContain("Room/use case");
     expect(built.prompt).toContain("No text, no words, no letters");
+    expect(built.negativePrompt).toContain("no wall");
+    expect(built.negativePrompt).toContain("no poster mockup");
+    expect(built.negativePrompt).toContain("no photo of a print");
     expect(built.negativePrompt).toContain("no logo");
   });
 

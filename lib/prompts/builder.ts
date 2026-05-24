@@ -4,7 +4,7 @@ import { guardPromptInput } from "@/lib/prompts/guardrails";
 import { promptInputSchema, type PromptInput } from "@/lib/prompts/schema";
 
 export const GLOBAL_NEGATIVE_PROMPT =
-  "No text, no words, no letters, no logo, no watermark, no signature, no frame, no room mockup.";
+  "No text, no words, no letters, no logo, no watermark, no signature, no frame, no border, no mat, no room, no wall, no furniture, no interior scene, no poster mockup, no product mockup, no photo of a print.";
 
 export type BuiltPrompt = {
   prompt: string;
@@ -32,9 +32,10 @@ export function buildWallArtPrompt(input: PromptInput): BuiltPrompt {
     negativePrompt: GLOBAL_NEGATIVE_PROMPT,
     prompt: [
       "Create a high-quality printable wall art image for an Etsy digital download product.",
+      "Generate the artwork itself only as a flat, full-bleed printable image. Do not depict the buyer context, room, frame, wall, poster mockup, product photo, or any surrounding environment.",
       "",
       `Subject/theme: an original ${parsed.subject}`,
-      `Room/use case: ${niche}${parsed.room} decor`,
+      `Target Etsy buyer context only, not visual content: suitable for ${niche}${parsed.room} decor`,
       `Style direction: ${style.description}`,
       `Color palette: ${colors}`,
       `Mood: ${parsed.mood}`,
@@ -42,7 +43,7 @@ export function buildWallArtPrompt(input: PromptInput): BuiltPrompt {
       `Avoid: ${avoid}`,
       "",
       "Output requirements:",
-      "original design, printable wall art, clean composition, central safe area, high detail, tasteful negative space, crisp details, tasteful texture, balanced contrast.",
+      "single standalone artwork only, original design, printable wall art, clean composition, central safe area, high detail, tasteful negative space, crisp details, tasteful texture, balanced contrast.",
       GLOBAL_NEGATIVE_PROMPT
     ].join("\n")
   };
