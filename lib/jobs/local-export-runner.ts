@@ -249,7 +249,7 @@ async function processLocalExportJob(jobId: string) {
     const artwork = await getRequiredArtwork(job);
     const source = await loadArtworkSource(artwork);
 
-    job.stage = "upscaling_or_resizing";
+    job.stage = "preparing_print_files";
     await persistExportJob(job);
 
     const printResult = await buildPrintFiles({

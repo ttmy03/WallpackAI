@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  AlertTriangle,
-  Check,
-  Download,
-  Loader2,
-  RotateCcw,
-  Sparkles,
-  XCircle
-} from "lucide-react";
+import { Download, Loader2, RotateCcw, Sparkles, XCircle } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -39,7 +31,7 @@ import type {
 } from "@/lib/app/api-types";
 import type { ExportJobView } from "@/lib/jobs/export-types";
 import type { GeneratedArtworkPreview } from "@/lib/jobs/generation-types";
-import { presetKeyToPixels, upscaleWarning } from "@/lib/print/math";
+import { presetKeyToPixels } from "@/lib/print/math";
 import {
   DEFAULT_PRINT_RATIO_KEYS,
   getDefaultPrintRatioKeys,
@@ -203,12 +195,6 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     () => presetKeyToPixels(selectedRatioKey),
     [selectedRatioKey]
   );
-  const selectedRatioAssessment = selectedArtwork
-    ? getResizeAssessment(
-        { width: selectedArtwork.width, height: selectedArtwork.height },
-        selectedRatioPixels
-      )
-    : null;
 
   async function runAction(
     pending: ActionState["pending"],
@@ -520,27 +506,6 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
                   </dd>
                 </div>
               </dl>
-              {selectedRatioAssessment ? (
-                <div
-                  className={`mt-4 rounded-md border px-3 py-2 text-sm ${
-                    selectedRatioAssessment.status === "pass"
-                      ? "border-primary/30 bg-primary/10"
-                      : "border-accent/40 bg-accent/10"
-                  }`}
-                >
-                  <div className="flex gap-2">
-                    {selectedRatioAssessment.status === "pass" ? (
-                      <Check className="mt-0.5 size-4 shrink-0 text-primary" />
-                    ) : (
-                      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-accent" />
-                    )}
-                    <p>
-                      {selectedRatioAssessment.message} Resize factor:{" "}
-                      {selectedRatioAssessment.factor.toFixed(2)}x.
-                    </p>
-                  </div>
-                </div>
-              ) : null}
             </div>
             {projectRatioKeys.map((key) => {
               const preset = PRINT_RATIO_PRESETS[key];
@@ -763,38 +728,6 @@ function ExportJobPanel({
       ) : null}
     </div>
   );
-}
-
-function getResizeAssessment(
-  sourcePixels: { width: number; height: number },
-  targetPixels: { width: number; height: number }
-) {
-  const status = upscaleWarning(sourcePixels, targetPixels);
-  const factor =
-    Math.max(targetPixels.width, targetPixels.height) /
-    Math.max(sourcePixels.width, sourcePixels.height);
-
-  if (status === "strong_warning") {
-    return {
-      status,
-      factor,
-      message: "Strong upscale needed. Large prints may lose detail."
-    };
-  }
-
-  if (status === "warning") {
-    return {
-      status,
-      factor,
-      message: "Moderate upscale needed. Review detail before export."
-    };
-  }
-
-  return {
-    status,
-    factor,
-    message: "Source is within a normal resize range."
-  };
 }
 
 function getProjectRatioKeys(detail: ProjectDetail) {
