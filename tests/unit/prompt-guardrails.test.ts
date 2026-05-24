@@ -41,6 +41,16 @@ describe("prompt guardrails and builder", () => {
     expect(built.negativePrompt).toContain("no logo");
   });
 
+  it("accepts landscape primary ratios for generation prompts", () => {
+    const built = buildWallArtPrompt({
+      ...safeInput,
+      primaryRatio: "3x2"
+    });
+
+    expect(built.primaryRatioLabel).toBe("3:2 Landscape");
+    expect(built.prompt).toContain("3:2 Landscape");
+  });
+
   it("keeps display-scene trigger words out of every style prompt", () => {
     for (const stylePresetKey of Object.keys(STYLE_PRESETS) as StylePresetKey[]) {
       const built = buildWallArtPrompt({

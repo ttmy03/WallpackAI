@@ -7,6 +7,8 @@ import {
   ChevronRight,
   ImageIcon,
   Loader2,
+  RectangleHorizontal,
+  RectangleVertical,
   RefreshCw,
   Sparkles
 } from "lucide-react";
@@ -30,7 +32,13 @@ import { Textarea } from "@/components/ui/textarea";
 import type { ApiResponse } from "@/lib/api-response";
 import type { GenerationJobView } from "@/lib/jobs/generation-types";
 import { presetKeyToPixels } from "@/lib/print/math";
-import { DEFAULT_PRINT_RATIO_KEYS } from "@/lib/print/presets";
+import {
+  getDefaultPrintRatioKeys,
+  getPrintRatioOrientation,
+  PRINT_RATIO_PRESETS,
+  type PrintOrientation,
+  type PrintRatioPresetKey
+} from "@/lib/print/presets";
 import { buildWallArtPrompt, PromptBlockedError } from "@/lib/prompts/builder";
 import { PALETTE_PRESETS, STYLE_PRESETS } from "@/lib/prompts/presets";
 import type { PalettePresetKey, StylePresetKey } from "@/lib/prompts/presets";
@@ -108,8 +116,11 @@ export function ProjectWizard() {
     }
   }, [input]);
 
-  const targetPixels = DEFAULT_PRINT_RATIO_KEYS.map((key) => ({
+  const selectedOrientation = getPrintRatioOrientation(input.primaryRatio);
+  const activeRatioKeys = getDefaultPrintRatioKeys(selectedOrientation);
+  const targetPixels = activeRatioKeys.map((key) => ({
     key,
+    preset: PRINT_RATIO_PRESETS[key],
     pixels: presetKeyToPixels(key)
   }));
 
@@ -218,6 +229,22 @@ export function ProjectWizard() {
       generationJob && !terminalGenerationStatuses.has(generationJob.status)
     );
 
+  function handleOrientationChange(orientation: PrintOrientation) {
+    const primaryRatio = getDefaultPrintRatioKeys(orientation)[0];
+
+    setInput((current) => ({
+      ...current,
+      primaryRatio
+    }));
+  }
+
+  function handlePrimaryRatioChange(primaryRatio: PrintRatioPresetKey) {
+    setInput((current) => ({
+      ...current,
+      primaryRatio
+    }));
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
       <section className="min-w-0 rounded-lg border bg-card">
@@ -288,6 +315,47 @@ export function ProjectWizard() {
                       setInput({ ...input, room: event.target.value })
                     }
                   />
+                </div>
+              </div>
+              <div className="space-y-3">
+                <Label>Pack format</Label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    aria-pressed={selectedOrientation === "portrait"}
+                    onClick={() => handleOrientationChange("portrait")}
+                    className={cn(
+                      "rounded-lg border p-4 text-left transition hover:bg-secondary",
+                      selectedOrientation === "portrait" &&
+                        "border-primary bg-secondary"
+                    )}
+                  >
+                    <span className="flex items-center gap-3">
+                      <RectangleVertical className="size-5 text-primary" />
+                      <span className="font-medium">Portrait pack</span>
+                    </span>
+                    <span className="mt-2 block text-sm text-muted-foreground">
+                      Vertical wall art for poster and gallery frames.
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={selectedOrientation === "landscape"}
+                    onClick={() => handleOrientationChange("landscape")}
+                    className={cn(
+                      "rounded-lg border p-4 text-left transition hover:bg-secondary",
+                      selectedOrientation === "landscape" &&
+                        "border-primary bg-secondary"
+                    )}
+                  >
+                    <span className="flex items-center gap-3">
+                      <RectangleHorizontal className="size-5 text-primary" />
+                      <span className="font-medium">Landscape pack</span>
+                    </span>
+                    <span className="mt-2 block text-sm text-muted-foreground">
+                      Horizontal wall art for wide prints and frames.
+                    </span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -421,12 +489,27 @@ export function ProjectWizard() {
             <div className="grid gap-5">
               <div className="grid gap-3 sm:grid-cols-2">
                 {targetPixels.map((target) => (
-                  <div key={target.key} className="rounded-lg border p-4">
-                    <p className="font-medium">{target.key}</p>
+                  <button
+                    key={target.key}
+                    type="button"
+                    aria-pressed={input.primaryRatio === target.key}
+                    onClick={() => handlePrimaryRatioChange(target.key)}
+                    className={cn(
+                      "rounded-lg border p-4 text-left transition hover:bg-secondary",
+                      input.primaryRatio === target.key &&
+                        "border-primary bg-secondary"
+                    )}
+                  >
+                    <span className="flex items-center justify-between gap-3">
+                      <span className="font-medium">{target.preset.label}</span>
+                      {input.primaryRatio === target.key ? (
+                        <Check className="size-4 text-primary" />
+                      ) : null}
+                    </span>
                     <p className="mt-1 font-mono text-sm text-muted-foreground">
                       {target.pixels.width} x {target.pixels.height} px
                     </p>
-                  </div>
+                  </button>
                 ))}
               </div>
               <Textarea
@@ -519,10 +602,18 @@ export function ProjectWizard() {
                                 width={artwork.width}
                                 height={artwork.height}
                                 unoptimized
-                                className="aspect-[2/3] w-full object-cover"
+                                className="w-full object-cover"
+                                style={{
+                                  aspectRatio: `${artwork.width} / ${artwork.height}`
+                                }}
                               />
                             ) : (
-                              <div className="grid aspect-[2/3] place-items-center text-sm text-muted-foreground">
+                              <div
+                                className="grid place-items-center text-sm text-muted-foreground"
+                                style={{
+                                  aspectRatio: `${PRINT_RATIO_PRESETS[input.primaryRatio].ratioWidth} / ${PRINT_RATIO_PRESETS[input.primaryRatio].ratioHeight}`
+                                }}
+                              >
                                 Preview pending
                               </div>
                             )}
@@ -601,6 +692,12 @@ export function ProjectWizard() {
             <SummaryRow label="Subject" value={input.subject} />
             <SummaryRow label="Room" value={input.room} />
             <SummaryRow
+              label="Format"
+              value={
+                selectedOrientation === "landscape" ? "Landscape" : "Portrait"
+              }
+            />
+            <SummaryRow
               label="Style"
               value={STYLE_PRESETS[input.stylePresetKey].label}
             />
@@ -608,7 +705,10 @@ export function ProjectWizard() {
               label="Palette"
               value={PALETTE_PRESETS[input.paletteKey].label}
             />
-            <SummaryRow label="Primary ratio" value={input.primaryRatio} />
+            <SummaryRow
+              label="Primary ratio"
+              value={PRINT_RATIO_PRESETS[input.primaryRatio].label}
+            />
             <div className="flex flex-wrap gap-2 pt-2">
               <Badge variant="secondary">2 previews</Badge>
               <Badge variant="secondary">2 credits</Badge>

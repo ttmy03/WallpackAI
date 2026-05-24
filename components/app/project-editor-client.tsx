@@ -38,6 +38,8 @@ import type { GeneratedArtworkPreview } from "@/lib/jobs/generation-types";
 import { presetKeyToPixels, upscaleWarning } from "@/lib/print/math";
 import {
   DEFAULT_PRINT_RATIO_KEYS,
+  getDefaultPrintRatioKeys,
+  getPrintRatioOrientation,
   PRINT_RATIO_PRESETS,
   type PrintRatioPresetKey
 } from "@/lib/print/presets";
@@ -71,6 +73,10 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     setSelectedArtworkId(
       (current) => current ?? projectDetail.artworks[0]?.artworkId ?? null
     );
+    setSelectedRatioKey((current) => {
+      const ratioKeys = getProjectRatioKeys(projectDetail);
+      return ratioKeys.includes(current) ? current : ratioKeys[0];
+    });
     setLoadError(null);
   }, [projectId]);
 
@@ -86,6 +92,10 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
         if (!cancelled) {
           setDetail(projectDetail);
           setSelectedArtworkId(projectDetail.artworks[0]?.artworkId ?? null);
+          setSelectedRatioKey((current) => {
+            const ratioKeys = getProjectRatioKeys(projectDetail);
+            return ratioKeys.includes(current) ? current : ratioKeys[0];
+          });
           setLoadError(null);
         }
       } catch (caughtError) {
@@ -117,6 +127,9 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
   );
   const selectedArtworkSrc =
     selectedArtwork?.dataUrl ?? selectedArtwork?.previewUrl ?? null;
+  const projectRatioKeys = detail
+    ? getProjectRatioKeys(detail)
+    : DEFAULT_PRINT_RATIO_KEYS;
   const selectedRatioPreset = PRINT_RATIO_PRESETS[selectedRatioKey];
   const selectedRatioPixels = useMemo(
     () => presetKeyToPixels(selectedRatioKey),
@@ -306,11 +319,21 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
               </figcaption>
             </figure>
           ) : selectedArtwork ? (
-            <div className="grid aspect-[4/5] place-items-center rounded-md border border-dashed text-sm text-muted-foreground">
+            <div
+              className="grid place-items-center rounded-md border border-dashed text-sm text-muted-foreground"
+              style={{
+                aspectRatio: `${selectedRatioPreset.ratioWidth} / ${selectedRatioPreset.ratioHeight}`
+              }}
+            >
               Preview URL is unavailable.
             </div>
           ) : (
-            <div className="grid aspect-[4/5] place-items-center rounded-md border border-dashed text-sm text-muted-foreground">
+            <div
+              className="grid place-items-center rounded-md border border-dashed text-sm text-muted-foreground"
+              style={{
+                aspectRatio: `${selectedRatioPreset.ratioWidth} / ${selectedRatioPreset.ratioHeight}`
+              }}
+            >
               Generate previews to start editing this project.
             </div>
           )}
@@ -393,7 +416,7 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
                 </div>
               ) : null}
             </div>
-            {DEFAULT_PRINT_RATIO_KEYS.map((key) => {
+            {projectRatioKeys.map((key) => {
               const preset = PRINT_RATIO_PRESETS[key];
               const pixels = presetKeyToPixels(key);
 
@@ -487,10 +510,18 @@ function ArtworkButton({
           width={artwork.width}
           height={artwork.height}
           unoptimized
-          className="aspect-[4/5] w-full object-cover"
+          className="w-full object-cover"
+          style={{
+            aspectRatio: `${artwork.width} / ${artwork.height}`
+          }}
         />
       ) : (
-        <span className="grid aspect-[4/5] place-items-center text-xs text-muted-foreground">
+        <span
+          className="grid place-items-center text-xs text-muted-foreground"
+          style={{
+            aspectRatio: `${artwork.width} / ${artwork.height}`
+          }}
+        >
           Preview unavailable
         </span>
       )}
@@ -531,6 +562,12 @@ function getResizeAssessment(
     factor,
     message: "Source is within a normal resize range."
   };
+}
+
+function getProjectRatioKeys(detail: ProjectDetail) {
+  return getDefaultPrintRatioKeys(
+    getPrintRatioOrientation(detail.project.promptInputs.primaryRatio)
+  );
 }
 
 function formatInches(value: number) {

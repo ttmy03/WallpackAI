@@ -45,6 +45,27 @@ describe("local generation runner", () => {
     expect(getLocalCreditBalance(userId)).toBe(beforeBalance - 2);
   });
 
+  it("passes landscape primary ratios through to preview generation", async () => {
+    const userId = `seller-${crypto.randomUUID()}`;
+    const queued = await enqueueLocalGenerationJob({
+      userId,
+      projectName: safeInput.packName,
+      promptInputs: {
+        ...safeInput,
+        primaryRatio: "3x2"
+      },
+      previewCount: 1
+    });
+
+    const job = await waitForLocalGenerationJob(queued.jobId);
+
+    expect(job.status).toBe("succeeded");
+    expect(job.primaryRatio).toBe("3x2");
+    expect(job.artworks[0]?.width).toBeGreaterThan(
+      job.artworks[0]?.height ?? 0
+    );
+  });
+
   it("blocks protected prompts before queueing provider work", async () => {
     await expect(
       enqueueLocalGenerationJob({

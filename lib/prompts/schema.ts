@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+import {
+  PRINT_RATIO_PRESET_KEYS,
+  type PrintRatioPresetKey
+} from "@/lib/print/presets";
 import { PALETTE_PRESETS, STYLE_PRESETS } from "@/lib/prompts/presets";
 
 const stylePresetKeys = Object.keys(STYLE_PRESETS) as [
@@ -12,7 +16,10 @@ const palettePresetKeys = Object.keys(PALETTE_PRESETS) as [
   ...Array<keyof typeof PALETTE_PRESETS>
 ];
 
-const ratioKeys = ["2x3", "3x4", "4x5", "5x7", "11x14", "iso-a"] as const;
+const ratioKeys = PRINT_RATIO_PRESET_KEYS as [
+  PrintRatioPresetKey,
+  ...PrintRatioPresetKey[]
+];
 
 export const promptInputSchema = z.object({
   packName: z.string().trim().min(2).max(80).optional(),

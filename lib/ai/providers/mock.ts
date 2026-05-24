@@ -48,6 +48,18 @@ function resolveMockDimensions(input: GenerateImageInput) {
       return { width: 990, height: 1260 };
     case "iso-a":
       return { width: 840, height: 1188 };
+    case "3x2":
+      return { width: 1296, height: 864 };
+    case "4x3":
+      return { width: 1200, height: 900 };
+    case "5x4":
+      return { width: 1200, height: 960 };
+    case "7x5":
+      return { width: 1260, height: 900 };
+    case "14x11":
+      return { width: 1260, height: 990 };
+    case "iso-a-landscape":
+      return { width: 1188, height: 840 };
     case "2x3":
     default:
       return { width: 864, height: 1296 };

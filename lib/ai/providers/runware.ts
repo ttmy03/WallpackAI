@@ -413,6 +413,18 @@ export function resolveRunwareDimensions(input: {
       return { width: 2048, height: 2608 };
     case "iso-a":
       return { width: 2048, height: 2896 };
+    case "3x2":
+      return { width: 2496, height: 1664 };
+    case "4x3":
+      return { width: 2304, height: 1728 };
+    case "5x4":
+      return { width: 2560, height: 2048 };
+    case "7x5":
+      return { width: 2864, height: 2048 };
+    case "14x11":
+      return { width: 2608, height: 2048 };
+    case "iso-a-landscape":
+      return { width: 2896, height: 2048 };
     case "2x3":
     default:
       return { width: 1664, height: 2496 };

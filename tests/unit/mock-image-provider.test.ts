@@ -20,4 +20,17 @@ describe("Mock image provider", () => {
     );
     expect(image.bytes.byteLength).toBeGreaterThan(500);
   });
+
+  it("returns landscape previews for landscape ratio requests", async () => {
+    const provider = new MockImageProvider();
+    const [image] = await provider.generate({
+      prompt: "minimalist mountain landscape printable wall art",
+      count: 1,
+      aspectRatio: "3x2"
+    });
+
+    expect(image.width).toBe(1296);
+    expect(image.height).toBe(864);
+    expect(image.width).toBeGreaterThan(image.height);
+  });
 });

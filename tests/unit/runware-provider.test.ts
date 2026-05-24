@@ -48,6 +48,14 @@ describe("Runware image provider", () => {
       width: 2048,
       height: 2608
     });
+    expect(resolveRunwareDimensions({ aspectRatio: "3x2" })).toEqual({
+      width: 2496,
+      height: 1664
+    });
+    expect(resolveRunwareDimensions({ aspectRatio: "14:11" })).toEqual({
+      width: 2608,
+      height: 2048
+    });
   });
 
   it("accepts GPT Image 2 compatible dimensions", () => {
