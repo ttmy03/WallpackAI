@@ -16,18 +16,15 @@ This project is a Next.js App Router app with API routes, so Firebase App Hostin
   `https://wallpackai-web--wallpackai.europe-west4.hosted.app`
 - GitHub repo exists and is pushed:
   `https://github.com/ttmy03/WallpackAI`
+- GitHub is connected to the App Hosting backend through Developer Connect:
+  `ttmy03/WallpackAI`
+- First build is ready:
+  `build-2026-05-24-000`
+- First rollout succeeded and the App Hosting URL returns `HTTP 200`.
 
-The backend is not connected to GitHub yet. `firebase apphosting:rollouts:create wallpackai-web --git-branch main` currently returns:
+## GitHub Repository Connection
 
-```txt
-Backend wallpackai-web is missing a connected repository.
-```
-
-Firebase says the repository must be connected through the Firebase Console.
-
-## Connect GitHub Repository
-
-In Firebase Console:
+The repository is already connected. If it needs to be reconnected later, use Firebase Console:
 
 1. Open App Hosting for project `wallpackai`.
 2. Open backend `wallpackai-web`.
@@ -38,7 +35,7 @@ In Firebase Console:
 7. Select live branch `main`.
 8. Keep root directory as `/`.
 
-After the repository is connected, create a rollout:
+For future manual rollouts from the `main` branch:
 
 ```bash
 firebase apphosting:rollouts:create wallpackai-web \
@@ -46,6 +43,8 @@ firebase apphosting:rollouts:create wallpackai-web \
   --git-branch main \
   --force
 ```
+
+If this command returns `HTTP Error: 409, unable to queue the operation`, Firebase already has a build or rollout operation queued for the backend. Check the backend in Firebase Console and wait for the active build to finish before starting another rollout.
 
 Add runtime secrets in the Firebase App Hosting console or with Secret Manager. Do not commit these to git:
 
