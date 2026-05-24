@@ -9,8 +9,6 @@ import type {
 export const RUNWARE_GPT_IMAGE_AIR_ID = "openai:gpt-image@2";
 export const RUNWARE_P_IMAGE_UPSCALE_AIR_ID = "prunaai:p-image@upscale";
 export const RUNWARE_API_URL = "https://api.runware.ai/v1";
-export const RUNWARE_UPSCALE_NEGATIVE_PROMPT =
-  "Remove any border, frame, mat, wall, room scene, furniture, poster mockup, product mockup, shadows from a frame, watermark, logo, text, letters, signature, or photo-of-a-print artifacts. Keep artwork only, full bleed, clean printable image.";
 
 type RunwareImageTask = {
   taskType: "imageInference";
@@ -31,7 +29,6 @@ type RunwareUpscaleTask = {
   taskType: "upscale";
   taskUUID: string;
   model: string;
-  negativePrompt: string;
   inputs: {
     image: string;
   };
@@ -135,8 +132,7 @@ export class RunwareImageProvider implements ImageProvider {
           outputFormat: task.outputFormat,
           sourceWidth: task.width,
           sourceHeight: task.height,
-          upscaleAirId: this.options.upscaleAirId,
-          negativePrompt: input.negativePrompt
+          upscaleAirId: this.options.upscaleAirId
         });
         const bytes = await downloadRunwareImage(upscaled.output, fetcher);
         const mimeType = mimeTypeFromBytes(bytes);
@@ -163,8 +159,7 @@ export class RunwareImageProvider implements ImageProvider {
             NSFWContent: output.NSFWContent,
             model: task.model,
             upscaleModel: upscaled.task.model,
-            upscaleTargetMegapixels: upscaled.task.targetMegapixels,
-            upscaleNegativePrompt: upscaled.task.negativePrompt
+            upscaleTargetMegapixels: upscaled.task.targetMegapixels
           }
         };
       })
@@ -200,7 +195,6 @@ export function buildRunwareUpscaleTask(
     image: string;
     sourceWidth: number;
     sourceHeight: number;
-    negativePrompt?: string;
     outputFormat?: "JPG" | "PNG" | "WEBP";
   },
   options: {
@@ -213,7 +207,6 @@ export function buildRunwareUpscaleTask(
     taskType: "upscale",
     taskUUID: options.taskUUID ?? randomUUID(),
     model: options.airId ?? RUNWARE_P_IMAGE_UPSCALE_AIR_ID,
-    negativePrompt: buildUpscaleNegativePrompt(input.negativePrompt),
     inputs: {
       image: input.image
     },
@@ -241,7 +234,6 @@ async function upscaleRunwareOutput(input: {
   sourceWidth: number;
   sourceHeight: number;
   upscaleAirId?: string;
-  negativePrompt?: string;
 }) {
   const image = runwareOutputToImageInput(input.output);
   const task = buildRunwareUpscaleTask(
@@ -249,7 +241,6 @@ async function upscaleRunwareOutput(input: {
       image,
       sourceWidth: input.sourceWidth,
       sourceHeight: input.sourceHeight,
-      negativePrompt: input.negativePrompt,
       outputFormat: input.outputFormat
     },
     {
@@ -297,16 +288,6 @@ async function upscaleRunwareOutput(input: {
       task.targetMegapixels
     )
   };
-}
-
-function buildUpscaleNegativePrompt(negativePrompt?: string) {
-  const trimmedNegativePrompt = negativePrompt?.trim();
-
-  if (!trimmedNegativePrompt) {
-    return RUNWARE_UPSCALE_NEGATIVE_PROMPT;
-  }
-
-  return `${RUNWARE_UPSCALE_NEGATIVE_PROMPT} ${trimmedNegativePrompt}`;
 }
 
 function runwareOutputToImageInput(

@@ -5,7 +5,6 @@ import {
   buildRunwareUpscaleTask,
   RUNWARE_GPT_IMAGE_AIR_ID,
   RUNWARE_P_IMAGE_UPSCALE_AIR_ID,
-  RUNWARE_UPSCALE_NEGATIVE_PROMPT,
   RunwareImageProvider,
   resolveRunwareDimensions
 } from "@/lib/ai/providers/runware";
@@ -67,13 +66,12 @@ describe("Runware image provider", () => {
     ).toThrow(/16 px steps/);
   });
 
-  it("builds P-Image Upscale tasks with cleanup negative prompts", () => {
+  it("builds P-Image Upscale tasks without unsupported prompt fields", () => {
     const task = buildRunwareUpscaleTask(
       {
         image: "https://example.test/generated.jpg",
         sourceWidth: 1664,
-        sourceHeight: 2496,
-        negativePrompt: "no wall, no frame"
+        sourceHeight: 2496
       },
       { taskUUID: "00000000-0000-4000-8000-000000000001" }
     );
@@ -85,8 +83,7 @@ describe("Runware image provider", () => {
     expect(task.targetMegapixels).toBe(8);
     expect(task.settings).toEqual({ enhanceDetails: true, realism: true });
     expect(task).not.toHaveProperty("positivePrompt");
-    expect(task.negativePrompt).toContain(RUNWARE_UPSCALE_NEGATIVE_PROMPT);
-    expect(task.negativePrompt).toContain("no wall, no frame");
+    expect(task).not.toHaveProperty("negativePrompt");
   });
 
   it("runs GPT Image 2 generation and then P-Image Upscale", async () => {
@@ -148,9 +145,9 @@ describe("Runware image provider", () => {
       taskType: "upscale",
       model: RUNWARE_P_IMAGE_UPSCALE_AIR_ID,
       inputs: { image: "https://image.test/generated.jpg" },
-      targetMegapixels: 8,
-      negativePrompt: expect.stringContaining("no wall")
+      targetMegapixels: 8
     });
+    expect(requests[1]).not.toHaveProperty("negativePrompt");
     expect(images[0]?.providerRequestId).toBe("upscaled-image");
     expect(images[0]?.usage?.generationTaskUUID).toBe("generation-task");
     expect(images[0]?.usage?.upscaleTaskUUID).toBe("upscale-task");

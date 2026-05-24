@@ -84,7 +84,7 @@ text, words, letters, logo, watermark, signature, frame, poster mockup, room moc
 
 Use provider-supported portrait/landscape sizes closest to the user's primary ratio.
 
-For Runware image models, keep AIR model selection and dimensions in the provider adapter. GPT Image 2 uses the AIR ID `openai:gpt-image@2` and requires explicit dimensions for text-to-image requests. After generation, upscale with `prunaai:p-image@upscale` and send the product negative prompt plus extra cleanup terms for borders, wall scenes, frames, mockups, text, logos, and watermarks.
+For Runware image models, keep AIR model selection and dimensions in the provider adapter. GPT Image 2 uses the AIR ID `openai:gpt-image@2` and requires explicit dimensions for text-to-image requests. After generation, upscale with `prunaai:p-image@upscale` using only the model-supported upscale parameters. Do not send `negativePrompt` to this upscale model; keep cleanup exclusions in the main generation prompt.
 
 MVP recommendation:
 

@@ -11,5 +11,6 @@
 
 - Set the production image provider boundary to Runware with AIR model `openai:gpt-image@2`.
 - Run `prunaai:p-image@upscale` after generation to produce cleaner, higher-resolution previews before storage.
+- Keep `negativePrompt` out of `prunaai:p-image@upscale` requests because the model rejects that parameter; prompt exclusions stay in the generation prompt path.
 - Kept provider-specific HTTP request construction under `/lib/ai/providers/runware.ts`.
 - Preserved `MockImageProvider` for local tests and cheap UI development.
