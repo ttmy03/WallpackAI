@@ -226,9 +226,13 @@ export function printFileToView(file: BuiltPrintFile): ExportPrintFileView {
     fileName: file.fileName,
     width: file.width,
     height: file.height,
+    workingWidth: file.workingWidth,
+    workingHeight: file.workingHeight,
     bytes: file.bytes.byteLength,
     quality: file.quality,
-    resizeFactor: file.resizeFactor
+    resizeFactor: file.resizeFactor,
+    upscaleProvider: file.upscaleProvider,
+    upscaleUsage: file.upscaleUsage
   };
 }
 

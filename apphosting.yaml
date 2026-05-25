@@ -70,13 +70,25 @@ env:
       - RUNTIME
 
   - variable: UPSCALE_PROVIDER
-    value: none
+    value: runware
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: EXPORT_PRINT_FILE_CONCURRENCY
+    value: "5"
     availability:
       - BUILD
       - RUNTIME
 
   - variable: RUNWARE_AIR_ID
     value: openai:gpt-image@2
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: RUNWARE_UPSCALE_AIR_ID
+    value: prunaai:p-image@upscale
     availability:
       - BUILD
       - RUNTIME

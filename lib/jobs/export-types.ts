@@ -21,9 +21,13 @@ export type ExportPrintFileView = {
   fileName: string;
   width: number;
   height: number;
+  workingWidth?: number;
+  workingHeight?: number;
   bytes: number;
   quality: number;
   resizeFactor: number;
+  upscaleProvider?: string;
+  upscaleUsage?: Record<string, unknown>;
 };
 
 export type ExportJobView = {
