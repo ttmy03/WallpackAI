@@ -106,7 +106,7 @@ export function DashboardClient() {
           <CardContent className="text-sm text-muted-foreground">
             {data.plan.previewBatches.limit === null
               ? `${data.creditBalance} credits available for preview and export jobs.`
-              : `${data.plan.previewBatches.remaining} of ${data.plan.previewBatches.limit} free preview batches left.`}
+              : `${data.plan.previewBatches.remaining} of ${data.plan.previewBatches.limit} free preview batches left. Credit balance: ${data.creditBalance}.`}
           </CardContent>
         </Card>
         <Card>
