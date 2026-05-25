@@ -13,6 +13,7 @@ const JPEG_QUALITY_STEPS = [90, 86, 82, 78, 74] as const;
 const TARGET_PRINT_FILE_BYTES = 18 * 1024 * 1024;
 const PRINT_FILE_BACKGROUND = "#ffffff";
 const BLURRED_BACKGROUND_SIGMA = 36;
+const MEMORY_HEAVY_JPEG_ENCODER_THRESHOLD_MP = 40;
 
 export type BuiltExportFile = {
   fileName: string;
@@ -325,11 +326,7 @@ async function renderJpegWithinTarget(
   for (const quality of JPEG_QUALITY_STEPS) {
     const bytes = await sharp(background)
       .composite([{ input: foreground, left: frame.left, top: frame.top }])
-      .jpeg({
-        quality,
-        progressive: true,
-        mozjpeg: true
-      })
+      .jpeg(printJpegOptions(quality, targetPixels))
       .toBuffer();
 
     best = { bytes, quality };
@@ -376,11 +373,7 @@ async function renderDirectJpegResize(
       })
       .flatten({ background: PRINT_FILE_BACKGROUND })
       .toColorspace("srgb")
-      .jpeg({
-        quality,
-        progressive: true,
-        mozjpeg: true
-      })
+      .jpeg(printJpegOptions(quality, targetPixels))
       .toBuffer();
 
     best = { bytes, quality };
@@ -395,4 +388,19 @@ async function renderDirectJpegResize(
   }
 
   return best;
+}
+
+function printJpegOptions(
+  quality: number,
+  targetPixels: { width: number; height: number }
+) {
+  const megapixels = (targetPixels.width * targetPixels.height) / 1_000_000;
+  const useMemoryHeavyEncoder =
+    megapixels <= MEMORY_HEAVY_JPEG_ENCODER_THRESHOLD_MP;
+
+  return {
+    quality,
+    progressive: useMemoryHeavyEncoder,
+    mozjpeg: useMemoryHeavyEncoder
+  };
 }

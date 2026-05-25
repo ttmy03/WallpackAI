@@ -4,9 +4,9 @@
 runConfig:
   minInstances: 0
   maxInstances: 10
-  concurrency: 80
-  cpu: 1
-  memoryMiB: 1024
+  concurrency: 10
+  cpu: 2
+  memoryMiB: 4096
 
 env:
   - variable: NEXT_PUBLIC_APP_URL
@@ -69,20 +69,14 @@ env:
       - BUILD
       - RUNTIME
 
+  - variable: UPSCALE_PROVIDER
+    value: none
+    availability:
+      - BUILD
+      - RUNTIME
+
   - variable: RUNWARE_AIR_ID
     value: openai:gpt-image@2
-    availability:
-      - BUILD
-      - RUNTIME
-
-  - variable: RUNWARE_UPSCALE_AIR_ID
-    value: prunaai:p-image@upscale
-    availability:
-      - BUILD
-      - RUNTIME
-
-  - variable: RUNWARE_UPSCALE_TARGET_MEGAPIXELS
-    value: "8"
     availability:
       - BUILD
       - RUNTIME
