@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  canQueuePreviewBatch,
   createPlanStatus,
+  FREE_PLAN_ONE_TIME_PREVIEW_CREDITS,
   previewCountForPlan
 } from "@/lib/billing/plans";
 import type { GenerationJobView } from "@/lib/jobs/generation-types";
@@ -15,7 +15,7 @@ const generationJob = (
 });
 
 describe("plan entitlements", () => {
-  it("allows 3 free preview batches of 2 previews", () => {
+  it("models free preview access as one-time credits", () => {
     const plan = createPlanStatus({
       planKey: "free",
       generationJobs: [
@@ -26,13 +26,14 @@ describe("plan entitlements", () => {
     });
 
     expect(plan.previewBatches.used).toBe(3);
-    expect(plan.previewBatches.remaining).toBe(0);
+    expect(plan.previewBatches.limit).toBeNull();
+    expect(plan.previewBatches.remaining).toBeNull();
     expect(plan.previewBatches.previewsPerBatch).toBe(2);
-    expect(canQueuePreviewBatch(plan)).toBe(false);
+    expect(FREE_PLAN_ONE_TIME_PREVIEW_CREDITS).toBe(6);
     expect(plan.canExportEtsyPack).toBe(false);
   });
 
-  it("does not count failed or cancelled preview batches against free quota", () => {
+  it("does not count failed or cancelled preview batches against usage", () => {
     const plan = createPlanStatus({
       planKey: "free",
       generationJobs: [
@@ -43,8 +44,7 @@ describe("plan entitlements", () => {
     });
 
     expect(plan.previewBatches.used).toBe(1);
-    expect(plan.previewBatches.remaining).toBe(2);
-    expect(canQueuePreviewBatch(plan)).toBe(true);
+    expect(plan.previewBatches.remaining).toBeNull();
   });
 
   it("unlocks Etsy pack export for paid plans", () => {
@@ -60,7 +60,6 @@ describe("plan entitlements", () => {
 
     expect(plan.previewBatches.limit).toBeNull();
     expect(plan.previewBatches.remaining).toBeNull();
-    expect(canQueuePreviewBatch(plan)).toBe(true);
     expect(plan.canExportEtsyPack).toBe(true);
   });
 

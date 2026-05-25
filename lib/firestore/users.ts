@@ -1,5 +1,10 @@
 import type { FirebaseSessionUser } from "@/lib/auth/firebase-auth";
-import { normalizePlanKey, type PlanKey } from "@/lib/billing/plans";
+import { grantFirestoreCredits } from "@/lib/billing/firestore-credit-ledger";
+import {
+  FREE_PLAN_ONE_TIME_PREVIEW_CREDITS,
+  normalizePlanKey,
+  type PlanKey
+} from "@/lib/billing/plans";
 import { getFirebaseFirestore } from "@/lib/firebase/admin";
 import {
   FIRESTORE_COLLECTIONS,
@@ -31,7 +36,7 @@ export async function upsertFirestoreUserFromSession(
   const ref = db.doc(userDocumentPath(sessionUser.firebaseUid));
   const now = new Date().toISOString();
 
-  return db.runTransaction(async (transaction) => {
+  const user = await db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(ref);
     const existing = snapshot.exists
       ? firestoreUserFromDocument(
@@ -60,6 +65,8 @@ export async function upsertFirestoreUserFromSession(
     transaction.set(ref, user, { merge: true });
     return user;
   });
+
+  return ensureFreePlanOneTimePreviewCredits(user);
 }
 
 export async function getFirestoreUser(userId: string) {
@@ -72,6 +79,21 @@ export async function getFirestoreUser(userId: string) {
   }
 
   return firestoreUserFromDocument(userId, snapshot.data() ?? {});
+}
+
+async function ensureFreePlanOneTimePreviewCredits(user: FirestoreUser) {
+  if (user.planKey !== "free" || FREE_PLAN_ONE_TIME_PREVIEW_CREDITS <= 0) {
+    return user;
+  }
+
+  await grantFirestoreCredits({
+    userId: user.id,
+    amount: FREE_PLAN_ONE_TIME_PREVIEW_CREDITS,
+    reason: "Free plan one-time preview credits",
+    idempotencyKey: `free-plan-preview-credits:${user.id}`
+  });
+
+  return (await getFirestoreUser(user.id)) ?? user;
 }
 
 export async function updateFirestoreUserSettings(

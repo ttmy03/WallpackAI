@@ -104,9 +104,9 @@ export function DashboardClient() {
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            {data.plan.previewBatches.limit === null
+            {data.plan.canExportEtsyPack
               ? `${data.creditBalance} credits available for preview and export jobs.`
-              : `${data.plan.previewBatches.remaining} of ${data.plan.previewBatches.limit} free preview batches left. Credit balance: ${data.creditBalance}.`}
+              : `${data.creditBalance} free preview credits available. Upgrade to export Etsy packs.`}
           </CardContent>
         </Card>
         <Card>

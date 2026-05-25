@@ -3,17 +3,16 @@ import { z } from "zod";
 
 import { fail, ok } from "@/lib/api-response";
 import { requireAppUser } from "@/lib/auth/api-auth";
-import {
-  canQueuePreviewBatch,
-  isFreePlan,
-  previewCountForPlan
-} from "@/lib/billing/plans";
+import { previewCountForPlan } from "@/lib/billing/plans";
 import { getUserPlanStatus } from "@/lib/billing/plan-usage";
 import {
   createFirestoreProject,
   getFirestoreProjectForUser
 } from "@/lib/firestore/projects";
-import { enqueueLocalGenerationJob } from "@/lib/jobs/local-generation-runner";
+import {
+  enqueueLocalGenerationJob,
+  getCreditBalance
+} from "@/lib/jobs/local-generation-runner";
 import { promptInputSchema } from "@/lib/prompts/schema";
 
 const generationRequestSchema = z.object({
@@ -47,21 +46,22 @@ export async function POST(request: Request) {
 
   const firestoreUser = auth.firestoreUser;
   const plan = await getUserPlanStatus(firestoreUser);
+  const previewCount = previewCountForPlan({
+    requestedCount: parsed.data.previewCount,
+    planKey: plan.planKey
+  });
+  const creditBalance = await getCreditBalance(firestoreUser.id);
 
-  if (!canQueuePreviewBatch(plan)) {
+  if (creditBalance < previewCount) {
     return NextResponse.json(
       fail(
-        "FREE_PREVIEW_LIMIT_REACHED",
-        "The free plan includes 3 preview batches with 2 previews each. Upgrade to create more previews."
+        "INSUFFICIENT_CREDITS",
+        `You need ${previewCount} credits to create this preview batch.`
       ),
       { status: 402 }
     );
   }
 
-  const previewCount = previewCountForPlan({
-    requestedCount: parsed.data.previewCount,
-    planKey: plan.planKey
-  });
   const project = parsed.data.projectId
     ? await getFirestoreProjectForUser(firestoreUser.id, parsed.data.projectId)
     : await createFirestoreProject({
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
     projectName: project.name,
     promptInputs: parsed.data.promptInputs,
     previewCount,
-    creditCost: isFreePlan(plan.planKey) ? 0 : previewCount,
+    creditCost: previewCount,
     quality: parsed.data.quality
   }).catch((error: unknown) => {
     if (error instanceof Error) {

@@ -10,7 +10,7 @@ These prices are placeholders and should be validated.
 
 | Plan | Monthly price | Credits | Intended user |
 |---|---:|---:|---|
-| Free | $0 | 5 one-time credits | Test the workflow |
+| Free | $0 | 6 one-time preview credits | Test the workflow |
 | Starter | $9/mo | 40 credits/mo | Beginner seller |
 | Pro | $19/mo | 120 credits/mo | Active Etsy seller |
 | Studio | $49/mo | 400 credits/mo | High-volume seller |

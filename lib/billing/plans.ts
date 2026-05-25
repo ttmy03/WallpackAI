@@ -1,8 +1,8 @@
 import type { GenerationJobView } from "@/lib/jobs/generation-types";
 
 export const FREE_PLAN_KEY = "free";
-export const FREE_PLAN_PREVIEW_BATCH_LIMIT = 3;
 export const FREE_PLAN_PREVIEWS_PER_BATCH = 2;
+export const FREE_PLAN_ONE_TIME_PREVIEW_CREDITS = 6;
 
 export const PLAN_KEYS = ["free", "starter", "studio", "batch"] as const;
 
@@ -51,28 +51,17 @@ export function createPlanStatus(input: {
   generationJobs: Pick<GenerationJobView, "requestedCount" | "status">[];
 }): PlanStatus {
   const used = countPreviewBatchesForPlanLimit(input.generationJobs);
-  const limit = isFreePlan(input.planKey)
-    ? FREE_PLAN_PREVIEW_BATCH_LIMIT
-    : null;
-
   return {
     planKey: input.planKey,
     label: PLAN_LABELS[input.planKey],
     canExportEtsyPack: !isFreePlan(input.planKey),
     previewBatches: {
       used,
-      limit,
-      remaining: limit === null ? null : Math.max(0, limit - used),
+      limit: null,
+      remaining: null,
       previewsPerBatch: FREE_PLAN_PREVIEWS_PER_BATCH
     }
   };
-}
-
-export function canQueuePreviewBatch(planStatus: PlanStatus) {
-  return (
-    planStatus.previewBatches.limit === null ||
-    (planStatus.previewBatches.remaining ?? 0) > 0
-  );
 }
 
 export function previewCountForPlan(input: {

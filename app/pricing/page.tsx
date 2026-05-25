@@ -7,10 +7,10 @@ const plans = [
   {
     name: "Free",
     price: "$0",
-    credits: "3 batches with 2 previews each",
+    credits: "6 one-time preview credits",
     features: [
       "Guided Etsy-safe presets",
-      "6 total preview images",
+      "Up to 6 total preview images",
       "Upgrade to export Etsy packs"
     ]
   },

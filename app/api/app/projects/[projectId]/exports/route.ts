@@ -51,7 +51,7 @@ export async function POST(
     return NextResponse.json(
       fail(
         "FREE_PLAN_EXPORT_LOCKED",
-        "Create Etsy Pack is available on paid plans. Free accounts can create 3 preview batches with 2 previews each."
+        "Create Etsy Pack is available on paid plans. Free accounts can use one-time preview credits before upgrading."
       ),
       { status: 402 }
     );

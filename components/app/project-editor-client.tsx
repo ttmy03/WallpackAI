@@ -757,9 +757,9 @@ function ExportUpsellDialog({
           </Button>
         </div>
         <p className="mt-3 text-sm text-muted-foreground">
-          Free includes 3 preview batches with 2 previews each. Etsy upload
-          ZIPs, exact print files, listing copy, and buyer instructions are
-          available on paid plans.
+          Free includes one-time preview credits. Etsy upload ZIPs, exact print
+          files, listing copy, and buyer instructions are available on paid
+          plans.
         </p>
         <ul className="mt-5 grid gap-3 text-sm">
           {[
