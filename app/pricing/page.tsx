@@ -14,10 +14,10 @@ const plans: {
     planKey: "free",
     name: "Free",
     price: "$0",
-    credits: "6 one-time preview credits",
+    credits: "15 one-time preview credits",
     features: [
       "Guided Etsy-safe presets",
-      "Up to 6 total preview images",
+      "Up to 3 total preview images",
       "Upgrade to export Etsy packs"
     ]
   },

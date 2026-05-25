@@ -119,7 +119,7 @@ Show summary:
 Button:
 
 ```txt
-Generate 2 previews - uses 2 credits
+Generate preview - uses 5 credits
 ```
 
 ## Generation progress

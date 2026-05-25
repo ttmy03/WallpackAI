@@ -38,7 +38,7 @@ export function buildWallArtPrompt(input: PromptInput): BuiltPrompt {
       `Style direction: ${style.description}`,
       `Color palette: ${colors}`,
       `Mood: ${parsed.mood}`,
-      `Composition: ${parsed.composition}. Keep the main subject inside the central 80% safe area so the artwork can be cropped into multiple print ratios including ${ratio.label}.`,
+      `Composition: ${parsed.composition}. Keep the main subject inside the central 80% safe area so the artwork works across all included print sizes in ${ratio.label}.`,
       `Avoid: ${avoid}`,
       "",
       "Output requirements:",

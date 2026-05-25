@@ -42,7 +42,7 @@ describe("local generation runner", () => {
     expect(job.creditCommitted).toBe(true);
     expect(job.artworks).toHaveLength(2);
     expect(job.artworks[0]?.dataUrl).toMatch(/^data:image\/png;base64,/);
-    expect(getLocalCreditBalance(userId)).toBe(beforeBalance - 2);
+    expect(getLocalCreditBalance(userId)).toBe(beforeBalance - 10);
   });
 
   it("passes landscape primary ratios through to preview generation", async () => {

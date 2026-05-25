@@ -3,7 +3,10 @@ import { z } from "zod";
 
 import { fail, ok } from "@/lib/api-response";
 import { requireAppUser } from "@/lib/auth/api-auth";
-import { previewCountForPlan } from "@/lib/billing/plans";
+import {
+  generationCreditCostForPreviewCount,
+  previewCountForPlan
+} from "@/lib/billing/plans";
 import { getUserPlanStatus } from "@/lib/billing/plan-usage";
 import {
   createFirestoreProject,
@@ -19,7 +22,7 @@ const generationRequestSchema = z.object({
   projectId: z.string().trim().min(1).max(120).optional(),
   projectName: z.string().trim().min(2).max(80).optional(),
   promptInputs: promptInputSchema,
-  previewCount: z.number().int().min(1).max(4).default(2),
+  previewCount: z.number().int().min(1).max(4).default(1),
   quality: z.enum(["draft", "standard", "premium"]).default("draft")
 });
 
@@ -50,13 +53,14 @@ export async function POST(request: Request) {
     requestedCount: parsed.data.previewCount,
     planKey: plan.planKey
   });
+  const creditCost = generationCreditCostForPreviewCount(previewCount);
   const creditBalance = await getCreditBalance(firestoreUser.id);
 
-  if (creditBalance < previewCount) {
+  if (creditBalance < creditCost) {
     return NextResponse.json(
       fail(
         "INSUFFICIENT_CREDITS",
-        `You need ${previewCount} credits to create this preview batch.`
+        `You need ${creditCost} credits to create this preview.`
       ),
       { status: 402 }
     );
@@ -86,7 +90,7 @@ export async function POST(request: Request) {
     projectName: project.name,
     promptInputs: parsed.data.promptInputs,
     previewCount,
-    creditCost: previewCount,
+    creditCost,
     quality: parsed.data.quality
   }).catch((error: unknown) => {
     if (error instanceof Error) {

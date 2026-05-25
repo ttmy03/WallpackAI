@@ -183,8 +183,26 @@ export const LANDSCAPE_PRINT_RATIO_KEYS: PrintRatioPresetKey[] = [
 
 export const DEFAULT_PRINT_RATIO_KEYS = PORTRAIT_PRINT_RATIO_KEYS;
 
+export const DEFAULT_PRIMARY_PRINT_RATIO_KEY_BY_ORIENTATION = {
+  portrait: "2x3",
+  landscape: "3x2"
+} as const satisfies Record<PrintOrientation, PrintRatioPresetKey>;
+
+export const DEFAULT_AUTOMATIC_PRINT_RATIO_KEYS = [
+  DEFAULT_PRIMARY_PRINT_RATIO_KEY_BY_ORIENTATION.portrait
+] as PrintRatioPresetKey[];
+
 export function getPrintRatioPreset(key: PrintRatioPresetKey) {
   return PRINT_RATIO_PRESETS[key];
+}
+
+export function isPrintRatioPresetKey(
+  value: unknown
+): value is PrintRatioPresetKey {
+  return (
+    typeof value === "string" &&
+    PRINT_RATIO_PRESET_KEYS.includes(value as PrintRatioPresetKey)
+  );
 }
 
 export function getPrintRatioOrientation(
@@ -192,6 +210,18 @@ export function getPrintRatioOrientation(
 ): PrintOrientation {
   const preset = getPrintRatioPreset(key);
   return preset.ratioWidth > preset.ratioHeight ? "landscape" : "portrait";
+}
+
+export function getDefaultPrimaryPrintRatioKey(
+  orientation: PrintOrientation
+): PrintRatioPresetKey {
+  return DEFAULT_PRIMARY_PRINT_RATIO_KEY_BY_ORIENTATION[orientation];
+}
+
+export function getAutomaticPrintRatioKeys(
+  orientation: PrintOrientation
+): PrintRatioPresetKey[] {
+  return [getDefaultPrimaryPrintRatioKey(orientation)];
 }
 
 export function getDefaultPrintRatioKeys(

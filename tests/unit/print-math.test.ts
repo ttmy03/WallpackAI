@@ -6,6 +6,7 @@ import {
   matchesPresetRatio
 } from "@/lib/print/math";
 import {
+  getAutomaticPrintRatioKeys,
   getDefaultPrintRatioKeys,
   PRINT_RATIO_PRESETS
 } from "@/lib/print/presets";
@@ -38,6 +39,11 @@ describe("print math", () => {
       "7x5",
       "14x11"
     ]);
+  });
+
+  it("uses one automatic generation ratio per project orientation", () => {
+    expect(getAutomaticPrintRatioKeys("portrait")).toEqual(["2x3"]);
+    expect(getAutomaticPrintRatioKeys("landscape")).toEqual(["3x2"]);
   });
 
   it("calculates effective DPI from real pixels", () => {

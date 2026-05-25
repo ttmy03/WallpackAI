@@ -64,6 +64,7 @@ describe("Firestore persistence helpers", () => {
     expect(project.userId).toBe("firebase-user-1");
     expect(project.status).toBe("ready");
     expect(project.promptInputs.subject).toBe("minimalist mountain landscape");
+    expect(project.printRatioKeys).toEqual(["2x3"]);
   });
 
   it("maps Firestore generation jobs without image bytes", () => {

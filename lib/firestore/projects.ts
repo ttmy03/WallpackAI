@@ -5,6 +5,12 @@ import {
   FIRESTORE_COLLECTIONS,
   projectDocumentPath
 } from "@/lib/firestore/collections";
+import {
+  getAutomaticPrintRatioKeys,
+  getPrintRatioOrientation,
+  isPrintRatioPresetKey,
+  type PrintRatioPresetKey
+} from "@/lib/print/presets";
 import type { PromptInput } from "@/lib/prompts/schema";
 import { getStorageProvider } from "@/lib/storage";
 
@@ -19,6 +25,7 @@ export type FirestoreProject = {
   paletteKey: string | null;
   customPalette: string | null;
   promptInputs: PromptInput;
+  printRatioKeys: PrintRatioPresetKey[];
   latestGenerationJobId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -51,6 +58,9 @@ export async function createFirestoreProject(input: {
     paletteKey: input.promptInputs.paletteKey,
     customPalette: input.promptInputs.customPalette ?? null,
     promptInputs: stripUndefined(input.promptInputs),
+    printRatioKeys: getAutomaticPrintRatioKeys(
+      getPrintRatioOrientation(input.promptInputs.primaryRatio)
+    ),
     latestGenerationJobId: null,
     createdAt: now,
     updatedAt: now
@@ -221,6 +231,7 @@ export function firestoreProjectFromDocument(
     paletteKey: nullableString(data.paletteKey),
     customPalette: nullableString(data.customPalette),
     promptInputs,
+    printRatioKeys: printRatioKeysOrFallback(data.printRatioKeys, promptInputs),
     latestGenerationJobId: nullableString(data.latestGenerationJobId),
     createdAt: stringOrFallback(data.createdAt, new Date(0).toISOString()),
     updatedAt: stringOrFallback(data.updatedAt, new Date(0).toISOString())
@@ -279,6 +290,25 @@ function nullableString(value: unknown) {
 
 function stringOrFallback(value: unknown, fallback: string) {
   return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function printRatioKeysOrFallback(
+  value: unknown,
+  promptInputs: PromptInput | undefined
+) {
+  if (Array.isArray(value)) {
+    const ratioKeys = value.filter(isPrintRatioPresetKey).slice(0, 5);
+
+    if (ratioKeys.length > 0) {
+      return ratioKeys;
+    }
+  }
+
+  const primaryRatio = isPrintRatioPresetKey(promptInputs?.primaryRatio)
+    ? promptInputs.primaryRatio
+    : "2x3";
+
+  return getAutomaticPrintRatioKeys(getPrintRatioOrientation(primaryRatio));
 }
 
 function stripUndefined<T>(value: T): T {

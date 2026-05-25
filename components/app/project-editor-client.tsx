@@ -35,14 +35,23 @@ import {
   CardHeader,
   CardTitle
 } from "@/components/ui/card";
-import type { ExportJobResponse, ProjectDetail } from "@/lib/app/api-types";
+import type {
+  ExportJobResponse,
+  ProjectDetail,
+  RetryGenerationResponse
+} from "@/lib/app/api-types";
+import {
+  ETSY_PACK_EXPORT_CREDIT_COST,
+  GENERATION_PREVIEW_CREDIT_COST
+} from "@/lib/billing/plans";
 import type { ExportJobView } from "@/lib/jobs/export-types";
-import type { GeneratedArtworkPreview } from "@/lib/jobs/generation-types";
+import type {
+  GeneratedArtworkPreview,
+  GenerationJobView
+} from "@/lib/jobs/generation-types";
 import { presetKeyToPixels } from "@/lib/print/math";
 import {
-  DEFAULT_PRINT_RATIO_KEYS,
-  getDefaultPrintRatioKeys,
-  getPrintRatioOrientation,
+  DEFAULT_AUTOMATIC_PRINT_RATIO_KEYS,
   PRINT_RATIO_PRESETS,
   type PrintRatioPresetKey
 } from "@/lib/print/presets";
@@ -50,10 +59,22 @@ import {
 type ActionState = {
   message: string | null;
   error: string | null;
-  pending: "delete" | "export" | null;
+  pending: "delete" | "export" | "generate" | null;
+};
+
+type QueueGenerationResponse = {
+  jobId: string;
+  status: GenerationJobView["status"];
+  projectId: string;
 };
 
 const TERMINAL_EXPORT_STATUSES = new Set<ExportJobView["status"]>([
+  "succeeded",
+  "failed",
+  "cancelled"
+]);
+
+const TERMINAL_GENERATION_STATUSES = new Set<GenerationJobView["status"]>([
   "succeeded",
   "failed",
   "cancelled"
@@ -67,7 +88,7 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     null
   );
   const [selectedRatioKey, setSelectedRatioKey] = useState<PrintRatioPresetKey>(
-    DEFAULT_PRINT_RATIO_KEYS[0]
+    DEFAULT_AUTOMATIC_PRINT_RATIO_KEYS[0]
   );
   const [action, setAction] = useState<ActionState>({
     message: null,
@@ -77,6 +98,9 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
   const [activeExportJobId, setActiveExportJobId] = useState<string | null>(
     null
   );
+  const [activeGenerationJobId, setActiveGenerationJobId] = useState<
+    string | null
+  >(null);
   const [showExportUpsell, setShowExportUpsell] = useState(false);
 
   const loadProject = useCallback(async () => {
@@ -186,6 +210,65 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     };
   }, [activeExportJobId, detail?.latestExportJob, loadProject]);
 
+  useEffect(() => {
+    const jobId =
+      activeGenerationJobId ??
+      (detail?.latestGenerationJob &&
+      !TERMINAL_GENERATION_STATUSES.has(detail.latestGenerationJob.status)
+        ? detail.latestGenerationJob.jobId
+        : null);
+
+    if (!jobId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function pollGenerationJob() {
+      try {
+        const job = await fetchAuthenticatedApi<GenerationJobView>(
+          `/api/app/generation-jobs/${jobId}`
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        setDetail((current) => mergeGenerationJob(current, job));
+
+        if (TERMINAL_GENERATION_STATUSES.has(job.status)) {
+          setActiveGenerationJobId(null);
+          await loadProject();
+
+          if (job.status === "succeeded" && job.artworks[0]) {
+            setSelectedArtworkId(job.artworks[0].artworkId);
+          }
+        }
+      } catch (caughtError) {
+        if (!cancelled) {
+          setAction({
+            message: null,
+            error:
+              caughtError instanceof Error
+                ? caughtError.message
+                : "Generation status could not be refreshed.",
+            pending: null
+          });
+        }
+      }
+    }
+
+    void pollGenerationJob();
+    const interval = window.setInterval(() => {
+      void pollGenerationJob();
+    }, 2500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [activeGenerationJobId, detail?.latestGenerationJob, loadProject]);
+
   const selectedArtwork = useMemo(
     () =>
       detail?.artworks.find(
@@ -199,7 +282,7 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     selectedArtwork?.dataUrl ?? selectedArtwork?.previewUrl ?? null;
   const projectRatioKeys = detail
     ? getProjectRatioKeys(detail)
-    : DEFAULT_PRINT_RATIO_KEYS;
+    : DEFAULT_AUTOMATIC_PRINT_RATIO_KEYS;
   const selectedRatioPreset = PRINT_RATIO_PRESETS[selectedRatioKey];
   const selectedRatioPixels = useMemo(
     () => presetKeyToPixels(selectedRatioKey),
@@ -250,12 +333,47 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
         {
           method: "POST",
           body: JSON.stringify({
-            artworkId: selectedArtwork.artworkId,
-            ratioKeys: projectRatioKeys
+            artworkId: selectedArtwork.artworkId
           })
         }
       );
       setActiveExportJobId(result.jobId);
+      await loadProject();
+    });
+  }
+
+  async function startVariantGeneration() {
+    if (!detail) {
+      return;
+    }
+
+    await runAction("generate", "Variant generation queued.", async () => {
+      const result = await fetchAuthenticatedApi<QueueGenerationResponse>(
+        "/api/app/generations",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            projectId,
+            promptInputs: detail.project.promptInputs,
+            previewCount: 1,
+            quality: "draft"
+          })
+        }
+      );
+      setActiveGenerationJobId(result.jobId);
+      await loadProject();
+    });
+  }
+
+  async function retryGeneration(jobId: string) {
+    await runAction("generate", "Variant generation queued.", async () => {
+      const result = await fetchAuthenticatedApi<RetryGenerationResponse>(
+        `/api/app/generation-jobs/${jobId}/retry`,
+        {
+          method: "POST"
+        }
+      );
+      setActiveGenerationJobId(result.jobId);
       await loadProject();
     });
   }
@@ -295,8 +413,14 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     detail?.latestGenerationJob ?? detail?.generationJobs[0] ?? null;
   const latestExportJob =
     detail?.latestExportJob ?? detail?.exportJobs[0] ?? null;
-  const exportRunning =
-    latestExportJob && !TERMINAL_EXPORT_STATUSES.has(latestExportJob.status);
+  const generationRunning = Boolean(
+    latestJob && !TERMINAL_GENERATION_STATUSES.has(latestJob.status)
+  );
+  const exportRunning = Boolean(
+    latestExportJob && !TERMINAL_EXPORT_STATUSES.has(latestExportJob.status)
+  );
+  const canGenerateVariant =
+    Boolean(detail) && !generationRunning && action.pending === null;
   const canCreateExport =
     Boolean(selectedArtwork) && !exportRunning && action.pending === null;
 
@@ -357,7 +481,7 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
               !selectedArtwork
                 ? "Generate and select artwork before exporting."
                 : detail.plan.canExportEtsyPack
-                  ? "Create Etsy upload ZIP files for the selected artwork."
+                  ? `Create Etsy upload ZIP files for ${ETSY_PACK_EXPORT_CREDIT_COST} credits.`
                   : "Open upgrade options for Etsy pack exports."
             }
           >
@@ -366,7 +490,7 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
             ) : (
               <Sparkles />
             )}
-            Create Etsy Pack
+            Create Etsy Pack ({ETSY_PACK_EXPORT_CREDIT_COST} credits)
           </Button>
         </div>
       </div>
@@ -389,8 +513,28 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
       <div className="mt-8 grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)_360px]">
         <Card>
           <CardHeader>
-            <CardTitle>Artwork</CardTitle>
-            <CardDescription>Generated previews</CardDescription>
+            <div className="grid gap-3">
+              <div>
+                <CardTitle>Artwork</CardTitle>
+                <CardDescription>Generated variants</CardDescription>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                disabled={!canGenerateVariant}
+                onClick={() => void startVariantGeneration()}
+                title={`Generate one additional artwork variant for ${GENERATION_PREVIEW_CREDIT_COST} credits.`}
+              >
+                {action.pending === "generate" || generationRunning ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
+                  <Sparkles />
+                )}
+                Add Variant ({GENERATION_PREVIEW_CREDIT_COST} credits)
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="grid gap-3">
             {detail.artworks.length > 0 ? (
@@ -457,7 +601,7 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
               className="mx-auto grid w-full place-items-center rounded-md border border-dashed text-sm text-muted-foreground"
               style={selectedPreviewFrameStyle}
             >
-              Generate previews to start editing this project.
+              Generate a preview to start editing this project.
             </div>
           )}
 
@@ -474,9 +618,22 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
                 {formatAppDate(latestJob.createdAt)}
               </p>
               {latestJob.errorMessage ? (
-                <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-destructive">
-                  {latestJob.errorMessage}
-                </p>
+                <div className="mt-3 grid gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2">
+                  <p className="text-destructive">{latestJob.errorMessage}</p>
+                  {latestJob.retryable ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-fit"
+                      disabled={action.pending !== null}
+                      onClick={() => void retryGeneration(latestJob.jobId)}
+                    >
+                      <RefreshCw />
+                      Retry generation
+                    </Button>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           ) : null}
@@ -492,9 +649,9 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
 
         <Card>
           <CardHeader>
-            <CardTitle>Ratio previews</CardTitle>
+            <CardTitle>Print sizes</CardTitle>
             <CardDescription>
-              Exact target dimensions before export
+              Automatically prepared for this project
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
@@ -523,6 +680,18 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
                   <dt className="text-muted-foreground">Filename</dt>
                   <dd className="break-all font-mono text-xs">
                     {selectedRatioPreset.fileName}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">
+                    Included Print Sizes
+                  </dt>
+                  <dd className="mt-1 flex flex-wrap gap-1.5">
+                    {selectedRatioPreset.supportedPrintSizes.map((size) => (
+                      <Badge key={size} variant="secondary">
+                        {size}
+                      </Badge>
+                    ))}
                   </dd>
                 </div>
               </dl>
@@ -840,9 +1009,9 @@ function ExportUpsellDialog({
 }
 
 function getProjectRatioKeys(detail: ProjectDetail) {
-  return getDefaultPrintRatioKeys(
-    getPrintRatioOrientation(detail.project.promptInputs.primaryRatio)
-  );
+  return detail.project.printRatioKeys.length > 0
+    ? detail.project.printRatioKeys
+    : DEFAULT_AUTOMATIC_PRINT_RATIO_KEYS;
 }
 
 function formatInches(value: number) {
@@ -866,6 +1035,37 @@ function mergeExportJob(
     ...detail,
     exportJobs,
     latestExportJob: exportJobs[0] ?? null
+  };
+}
+
+function mergeGenerationJob(
+  detail: ProjectDetail | null,
+  job: GenerationJobView
+): ProjectDetail | null {
+  if (!detail) {
+    return detail;
+  }
+
+  const generationJobs = [
+    job,
+    ...detail.generationJobs.filter(
+      (candidate) => candidate.jobId !== job.jobId
+    )
+  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const artworkById = new Map(
+    [...job.artworks, ...detail.artworks].map((artwork) => [
+      artwork.artworkId,
+      artwork
+    ])
+  );
+
+  return {
+    ...detail,
+    generationJobs,
+    latestGenerationJob: generationJobs[0] ?? null,
+    artworks: [...artworkById.values()].sort((a, b) =>
+      b.createdAt.localeCompare(a.createdAt)
+    )
   };
 }
 

@@ -33,18 +33,18 @@ import { Textarea } from "@/components/ui/textarea";
 import type { ApiResponse } from "@/lib/api-response";
 import type { DashboardSummary } from "@/lib/app/api-types";
 import {
+  GENERATION_PREVIEW_CREDIT_COST,
   FREE_PLAN_ONE_TIME_PREVIEW_CREDITS,
-  FREE_PLAN_PREVIEWS_PER_BATCH,
   type PlanStatus
 } from "@/lib/billing/plans";
 import type { GenerationJobView } from "@/lib/jobs/generation-types";
 import { presetKeyToPixels } from "@/lib/print/math";
 import {
-  getDefaultPrintRatioKeys,
+  getAutomaticPrintRatioKeys,
+  getDefaultPrimaryPrintRatioKey,
   getPrintRatioOrientation,
   PRINT_RATIO_PRESETS,
-  type PrintOrientation,
-  type PrintRatioPresetKey
+  type PrintOrientation
 } from "@/lib/print/presets";
 import { buildWallArtPrompt, PromptBlockedError } from "@/lib/prompts/builder";
 import { PALETTE_PRESETS, STYLE_PRESETS } from "@/lib/prompts/presets";
@@ -127,14 +127,15 @@ export function ProjectWizard() {
   }, [input]);
 
   const selectedOrientation = getPrintRatioOrientation(input.primaryRatio);
-  const activeRatioKeys = getDefaultPrintRatioKeys(selectedOrientation);
-  const targetPixels = activeRatioKeys.map((key) => ({
-    key,
-    preset: PRINT_RATIO_PRESETS[key],
-    pixels: presetKeyToPixels(key)
-  }));
+  const defaultPrimaryRatio = getDefaultPrimaryPrintRatioKey(
+    selectedOrientation
+  );
+  const automaticRatioKeys = getAutomaticPrintRatioKeys(selectedOrientation);
+  const defaultRatioPreset = PRINT_RATIO_PRESETS[defaultPrimaryRatio];
+  const defaultRatioPixels = presetKeyToPixels(defaultPrimaryRatio);
+  const defaultRatioDisplay = formatRatioKey(defaultPrimaryRatio);
   const isFreePlan = planStatus?.planKey === "free";
-  const previewCreditCost = FREE_PLAN_PREVIEWS_PER_BATCH;
+  const previewCreditCost = GENERATION_PREVIEW_CREDIT_COST;
   const freePreviewCreditsRemaining = isFreePlan ? creditBalance : null;
   const freePreviewLimitReached =
     isFreePlan &&
@@ -148,6 +149,21 @@ export function ProjectWizard() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (input.primaryRatio === defaultPrimaryRatio) {
+      return;
+    }
+
+    setInput((current) => {
+      const currentOrientation = getPrintRatioOrientation(current.primaryRatio);
+      const primaryRatio = getDefaultPrimaryPrintRatioKey(currentOrientation);
+
+      return current.primaryRatio === primaryRatio
+        ? current
+        : { ...current, primaryRatio };
+    });
+  }, [defaultPrimaryRatio, input.primaryRatio]);
 
   useEffect(() => {
     let cancelled = false;
@@ -226,7 +242,7 @@ export function ProjectWizard() {
 
     if (freePreviewLimitReached) {
       setGenerationError(
-        `You need ${previewCreditCost} credits to generate 2 previews.`
+        `You need ${previewCreditCost} credits to generate a preview.`
       );
       return;
     }
@@ -250,13 +266,13 @@ export function ProjectWizard() {
         ? {
             projectId: activeProjectId,
             promptInputs: input,
-            previewCount: 2,
+            previewCount: 1,
             quality: "draft"
           }
         : {
             projectName: input.packName,
             promptInputs: input,
-            previewCount: 2,
+            previewCount: 1,
             quality: "draft"
           };
       const response = await fetch("/api/app/generations", {
@@ -297,15 +313,8 @@ export function ProjectWizard() {
     );
 
   function handleOrientationChange(orientation: PrintOrientation) {
-    const primaryRatio = getDefaultPrintRatioKeys(orientation)[0];
+    const primaryRatio = getDefaultPrimaryPrintRatioKey(orientation);
 
-    setInput((current) => ({
-      ...current,
-      primaryRatio
-    }));
-  }
-
-  function handlePrimaryRatioChange(primaryRatio: PrintRatioPresetKey) {
     setInput((current) => ({
       ...current,
       primaryRatio
@@ -554,30 +563,37 @@ export function ProjectWizard() {
 
           {step === 4 ? (
             <div className="grid gap-5">
-              <div className="grid gap-3 sm:grid-cols-2">
-                {targetPixels.map((target) => (
-                  <button
-                    key={target.key}
-                    type="button"
-                    aria-pressed={input.primaryRatio === target.key}
-                    onClick={() => handlePrimaryRatioChange(target.key)}
-                    className={cn(
-                      "rounded-lg border p-4 text-left transition hover:bg-secondary",
-                      input.primaryRatio === target.key &&
-                        "border-primary bg-secondary"
-                    )}
-                  >
-                    <span className="flex items-center justify-between gap-3">
-                      <span className="font-medium">{target.preset.label}</span>
-                      {input.primaryRatio === target.key ? (
-                        <Check className="size-4 text-primary" />
-                      ) : null}
-                    </span>
-                    <p className="mt-1 font-mono text-sm text-muted-foreground">
-                      {target.pixels.width} x {target.pixels.height} px
+              <div className="rounded-lg border bg-secondary/40 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-muted-foreground">
+                      Generation ratio
                     </p>
-                  </button>
-                ))}
+                    <p className="mt-1 text-2xl font-semibold tracking-normal">
+                      {defaultRatioDisplay}
+                    </p>
+                  </div>
+                  <Badge variant="secondary">
+                    {selectedOrientation === "landscape"
+                      ? "Landscape"
+                      : "Vertical"}
+                  </Badge>
+                </div>
+                <dl className="mt-4 grid gap-3 text-sm">
+                  <div>
+                    <dt className="text-muted-foreground">Master print file</dt>
+                    <dd className="font-mono">
+                      {defaultRatioPixels.width} x {defaultRatioPixels.height}{" "}
+                      px
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Print Size</dt>
+                    <dd>
+                      {defaultRatioPreset.supportedPrintSizes.join(", ")}
+                    </dd>
+                  </div>
+                </dl>
               </div>
               {isFreePlan ? (
                 <div className="rounded-lg border bg-secondary/50 p-4 text-sm">
@@ -593,7 +609,7 @@ export function ProjectWizard() {
                   </div>
                   <p className="mt-2 text-muted-foreground">
                     Free includes {FREE_PLAN_ONE_TIME_PREVIEW_CREDITS} one-time
-                    preview credits. Generating 2 previews uses{" "}
+                    preview credits. Generating a preview uses{" "}
                     {previewCreditCost} credits.
                   </p>
                 </div>
@@ -760,10 +776,10 @@ export function ProjectWizard() {
                   <Sparkles />
                 )}
                 {isGenerationRunning
-                  ? "Generating previews"
+                  ? "Generating preview"
                   : freePreviewLimitReached
                     ? "Not enough credits"
-                    : "Generate 2 previews"}
+                    : "Generate preview"}
               </Button>
             )}
           </div>
@@ -796,17 +812,25 @@ export function ProjectWizard() {
               value={PALETTE_PRESETS[input.paletteKey].label}
             />
             <SummaryRow
-              label="Primary ratio"
-              value={PRINT_RATIO_PRESETS[input.primaryRatio].label}
+              label="Generate ratio"
+              value={`${defaultRatioDisplay} ${
+                selectedOrientation === "landscape" ? "Landscape" : "Vertical"
+              }`}
+            />
+            <SummaryRow
+              label="Print sizes"
+              value={automaticRatioKeys
+                .flatMap((key) => PRINT_RATIO_PRESETS[key].supportedPrintSizes)
+                .join(", ")}
             />
             <div className="flex flex-wrap gap-2 pt-2">
-              <Badge variant="secondary">2 previews</Badge>
+              <Badge variant="secondary">1 preview</Badge>
               {isFreePlan ? (
                 <Badge variant="secondary">
                   {freePreviewCreditsRemaining ?? 0} free credits left
                 </Badge>
               ) : (
-                <Badge variant="secondary">2 credits</Badge>
+                <Badge variant="secondary">{previewCreditCost} credits</Badge>
               )}
               <Badge variant={result.ok ? "default" : "warning"}>
                 {result.ok ? "Prompt allowed" : "Needs edit"}
@@ -835,7 +859,11 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[100px_1fr] gap-3">
       <span className="text-muted-foreground">{label}</span>
-      <span className="min-w-0 truncate font-medium">{value}</span>
+      <span className="min-w-0 break-words font-medium">{value}</span>
     </div>
   );
+}
+
+function formatRatioKey(key: string) {
+  return key.replace("x", ":");
 }

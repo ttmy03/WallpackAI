@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   createPlanStatus,
+  ETSY_PACK_EXPORT_CREDIT_COST,
   FREE_PLAN_ONE_TIME_PREVIEW_CREDITS,
+  GENERATION_PREVIEW_CREDIT_COST,
+  generationCreditCostForPreviewCount,
   previewCountForPlan
 } from "@/lib/billing/plans";
 import type { GenerationJobView } from "@/lib/jobs/generation-types";
@@ -28,8 +31,8 @@ describe("plan entitlements", () => {
     expect(plan.previewBatches.used).toBe(3);
     expect(plan.previewBatches.limit).toBeNull();
     expect(plan.previewBatches.remaining).toBeNull();
-    expect(plan.previewBatches.previewsPerBatch).toBe(2);
-    expect(FREE_PLAN_ONE_TIME_PREVIEW_CREDITS).toBe(6);
+    expect(plan.previewBatches.previewsPerBatch).toBe(1);
+    expect(FREE_PLAN_ONE_TIME_PREVIEW_CREDITS).toBe(15);
     expect(plan.canExportEtsyPack).toBe(false);
   });
 
@@ -63,10 +66,17 @@ describe("plan entitlements", () => {
     expect(plan.canExportEtsyPack).toBe(true);
   });
 
-  it("forces free generation batches to 2 previews", () => {
-    expect(previewCountForPlan({ requestedCount: 4, planKey: "free" })).toBe(2);
+  it("limits free generation batches to one preview", () => {
+    expect(previewCountForPlan({ requestedCount: 4, planKey: "free" })).toBe(1);
     expect(previewCountForPlan({ requestedCount: 4, planKey: "studio" })).toBe(
       4
     );
+  });
+
+  it("prices previews, variants, and Etsy pack exports at 5 credits", () => {
+    expect(GENERATION_PREVIEW_CREDIT_COST).toBe(5);
+    expect(generationCreditCostForPreviewCount(1)).toBe(5);
+    expect(generationCreditCostForPreviewCount(2)).toBe(10);
+    expect(ETSY_PACK_EXPORT_CREDIT_COST).toBe(5);
   });
 });

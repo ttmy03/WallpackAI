@@ -7,6 +7,7 @@ import {
   InMemoryCreditLedger,
   InsufficientCreditsError
 } from "@/lib/billing/credit-ledger";
+import { generationCreditCostForPreviewCount } from "@/lib/billing/plans";
 import {
   commitFirestoreCredits,
   getFirestoreCreditBalance,
@@ -115,7 +116,8 @@ export async function enqueueLocalGenerationJob(
     status: "queued",
     stage: "queued",
     requestedCount: previewCount,
-    creditCost: input.creditCost ?? previewCount,
+    creditCost:
+      input.creditCost ?? generationCreditCostForPreviewCount(previewCount),
     creditReserved: false,
     creditCommitted: false,
     prompt: builtPrompt.prompt,

@@ -1,8 +1,10 @@
 import type { GenerationJobView } from "@/lib/jobs/generation-types";
 
 export const FREE_PLAN_KEY = "free";
-export const FREE_PLAN_PREVIEWS_PER_BATCH = 2;
-export const FREE_PLAN_ONE_TIME_PREVIEW_CREDITS = 6;
+export const FREE_PLAN_PREVIEWS_PER_BATCH = 1;
+export const FREE_PLAN_ONE_TIME_PREVIEW_CREDITS = 15;
+export const GENERATION_PREVIEW_CREDIT_COST = 5;
+export const ETSY_PACK_EXPORT_CREDIT_COST = 5;
 
 export const PLAN_KEYS = ["free", "starter", "studio", "batch"] as const;
 export const PAID_PLAN_KEYS = ["starter", "studio", "batch"] as const;
@@ -75,6 +77,14 @@ export function previewCountForPlan(input: {
   }
 
   return FREE_PLAN_PREVIEWS_PER_BATCH;
+}
+
+export function generationCreditCostForPreviewCount(previewCount: number) {
+  if (!Number.isFinite(previewCount) || previewCount <= 0) {
+    return 0;
+  }
+
+  return Math.trunc(previewCount) * GENERATION_PREVIEW_CREDIT_COST;
 }
 
 function countPreviewBatchesForPlanLimit(

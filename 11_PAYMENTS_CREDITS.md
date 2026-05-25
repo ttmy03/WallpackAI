@@ -10,7 +10,7 @@ These prices are placeholders and should be validated.
 
 | Plan | Monthly price | Credits | Intended user |
 |---|---:|---:|---|
-| Free | $0 | 6 one-time preview credits | Test the workflow |
+| Free | $0 | 15 one-time preview credits | Test the workflow |
 | Starter | $9/mo | 40 credits/mo | Beginner seller |
 | Pro | $19/mo | 120 credits/mo | Active Etsy seller |
 | Studio | $49/mo | 400 credits/mo | High-volume seller |
@@ -21,16 +21,14 @@ Suggested beta costs:
 
 | Action | Credits |
 |---|---:|
-| Generate 1 draft preview | 1 |
-| Generate 1 standard preview | 2 |
-| Generate 1 premium preview | 3 |
+| Generate 1 preview or variant | 5 |
 | Export Etsy pack standard | 5 |
 | Regenerate listing copy | 0 or 1 |
 | Advanced upscale add-on | 3 per ratio |
 
 MVP can simplify:
 
-- 2 preview images = 4 credits.
+- 1 preview or variant = 5 credits.
 - 1 Etsy export pack = 5 credits.
 
 ## Stripe implementation

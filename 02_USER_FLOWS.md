@@ -17,7 +17,7 @@
 8. Chooses style preset: `Japandi Minimal`.
 9. Chooses color palette: `warm beige, ivory, charcoal, muted sage`.
 10. Chooses primary ratio: `2:3 poster`.
-11. Clicks `Generate previews`.
+11. Clicks `Generate preview`.
 12. Job starts and credits are reserved.
 13. UI shows progress with states:
     - validating prompt,

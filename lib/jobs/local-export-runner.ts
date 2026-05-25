@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { getUpscaleProvider } from "@/lib/ai/upscale";
+import { ETSY_PACK_EXPORT_CREDIT_COST } from "@/lib/billing/plans";
 import { InsufficientCreditsError } from "@/lib/billing/credit-ledger";
 import {
   buildPrintFiles,
@@ -34,8 +35,6 @@ import {
 } from "@/lib/jobs/local-generation-runner";
 import { sanitizeFilename } from "@/lib/print/filenames";
 import {
-  getDefaultPrintRatioKeys,
-  getPrintRatioOrientation,
   type PrintRatioPresetKey
 } from "@/lib/print/presets";
 import { STYLE_PRESETS } from "@/lib/prompts/presets";
@@ -82,7 +81,6 @@ type GlobalWithLocalExportState = typeof globalThis & {
   __wallpackLocalExportState?: LocalExportState;
 };
 
-const EXPORT_CREDIT_COST = 5;
 const DEFAULT_EXPORT_JOB_TIMEOUT_MS = 15 * 60 * 1000;
 const TERMINAL_STATUSES = new Set<JobStatus>([
   "succeeded",
@@ -129,9 +127,7 @@ export async function enqueueLocalExportJob(input: EnqueueLocalExportInput) {
 
   const requestedRatioKeys =
     input.ratioKeys?.length === 0 || !input.ratioKeys
-      ? getDefaultPrintRatioKeys(
-          getPrintRatioOrientation(project.promptInputs.primaryRatio)
-        )
+      ? project.printRatioKeys
       : input.ratioKeys;
   const job: LocalExportJob = {
     id: `exp_${randomUUID()}`,
@@ -142,7 +138,7 @@ export async function enqueueLocalExportJob(input: EnqueueLocalExportInput) {
     status: "queued",
     stage: "queued",
     requestedRatioKeys,
-    creditCost: EXPORT_CREDIT_COST,
+    creditCost: ETSY_PACK_EXPORT_CREDIT_COST,
     creditReserved: false,
     creditCommitted: false,
     creditRefunded: false,
