@@ -202,7 +202,7 @@ export function SettingsClient() {
               </div>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
-              {settings.hasStripeCustomer ? (
+              {settings.planKey !== "free" && settings.hasStripeCustomer ? (
                 <BillingPortalButton variant="default">
                   Manage subscription
                 </BillingPortalButton>

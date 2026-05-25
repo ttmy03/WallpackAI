@@ -5,8 +5,10 @@ export const FREE_PLAN_PREVIEWS_PER_BATCH = 2;
 export const FREE_PLAN_ONE_TIME_PREVIEW_CREDITS = 6;
 
 export const PLAN_KEYS = ["free", "starter", "studio", "batch"] as const;
+export const PAID_PLAN_KEYS = ["starter", "studio", "batch"] as const;
 
 export type PlanKey = (typeof PLAN_KEYS)[number];
+export type PaidPlanKey = (typeof PAID_PLAN_KEYS)[number];
 
 export type PlanStatus = {
   planKey: PlanKey;

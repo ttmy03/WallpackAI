@@ -96,7 +96,7 @@ export function BillingClient() {
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-start">
-          {settings.hasStripeCustomer ? (
+          {settings.planKey !== "free" && settings.hasStripeCustomer ? (
             <BillingPortalButton variant="default">
               Manage subscription
             </BillingPortalButton>

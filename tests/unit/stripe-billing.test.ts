@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  checkoutCancelUrlFromRequest,
+  checkoutSuccessUrlFromRequest,
+  stripePriceIdForPaidPlan,
+  StripeCheckoutConfigurationError
+} from "@/lib/billing/checkout";
 import { billingReturnUrlFromRequest } from "@/lib/billing/portal";
 import { planKeyFromStripePriceId } from "@/lib/billing/stripe";
 
@@ -33,6 +39,32 @@ describe("Stripe billing mapping", () => {
 
     expect(billingReturnUrlFromRequest(request)).toBe(
       "https://wallpack.example/app/settings/billing"
+    );
+  });
+
+  it("builds Checkout success and cancel URLs from the configured app URL", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "https://wallpack.example/app";
+    const request = new Request("http://localhost:3000/api/app/billing/checkout");
+
+    expect(checkoutSuccessUrlFromRequest(request)).toBe(
+      "https://wallpack.example/app/settings/billing?checkout=success"
+    );
+    expect(checkoutCancelUrlFromRequest(request)).toBe(
+      "https://wallpack.example/pricing?checkout=cancelled"
+    );
+  });
+
+  it("loads the configured Stripe price id for a paid plan", () => {
+    process.env.STRIPE_PRICE_STARTER_ID = "price_starter";
+
+    expect(stripePriceIdForPaidPlan("starter")).toBe("price_starter");
+  });
+
+  it("fails clearly when a paid plan has no Stripe price id", () => {
+    delete process.env.STRIPE_PRICE_BATCH_ID;
+
+    expect(() => stripePriceIdForPaidPlan("batch")).toThrow(
+      StripeCheckoutConfigurationError
     );
   });
 });

@@ -1,6 +1,10 @@
 import Stripe from "stripe";
 
-import { normalizePlanKey, type PlanKey } from "@/lib/billing/plans";
+import {
+  normalizePlanKey,
+  type PaidPlanKey,
+  type PlanKey
+} from "@/lib/billing/plans";
 
 const STRIPE_API_VERSION = "2026-04-22.dahlia";
 
@@ -72,6 +76,10 @@ export function planKeyFromStripeSubscription(
   return planKeyFromStripePriceId(matchedItem?.price.id);
 }
 
+export function stripePriceIdForPlan(planKey: PaidPlanKey) {
+  return stripePriceIdsByPlan()[planKey];
+}
+
 export function stripeCustomerIdFromValue(
   value: string | Stripe.Customer | Stripe.DeletedCustomer | null | undefined
 ) {
@@ -92,10 +100,7 @@ export function stripeSubscriptionIdFromValue(
   return typeof value === "string" ? value : value.id;
 }
 
-function stripePriceIdsByPlan(): Record<
-  Exclude<PlanKey, "free">,
-  string | undefined
-> {
+function stripePriceIdsByPlan(): Record<PaidPlanKey, string | undefined> {
   return {
     starter: process.env.STRIPE_PRICE_STARTER_ID,
     studio: process.env.STRIPE_PRICE_STUDIO_ID,

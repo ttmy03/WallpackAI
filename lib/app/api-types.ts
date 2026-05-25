@@ -39,6 +39,10 @@ export type BillingPortalResponse = {
   url: string;
 };
 
+export type BillingCheckoutResponse = {
+  url: string;
+};
+
 export type DeleteAccountResponse = {
   deleted: true;
 };

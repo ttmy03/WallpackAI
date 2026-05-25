@@ -1,10 +1,17 @@
 import { Check } from "lucide-react";
-import Link from "next/link";
 
-import { Button } from "@/components/ui/button";
+import { PricingPlanAction } from "@/components/marketing/pricing-plan-action";
+import type { PlanKey } from "@/lib/billing/plans";
 
-const plans = [
+const plans: {
+  planKey: PlanKey;
+  name: string;
+  price: string;
+  credits: string;
+  features: string[];
+}[] = [
   {
+    planKey: "free",
     name: "Free",
     price: "$0",
     credits: "6 one-time preview credits",
@@ -15,18 +22,21 @@ const plans = [
     ]
   },
   {
+    planKey: "starter",
     name: "Starter",
     price: "$12",
     credits: "80 credits / month",
     features: ["Preview generation", "5-ratio Etsy packs", "Listing copy"]
   },
   {
+    planKey: "studio",
     name: "Studio",
     price: "$29",
     credits: "260 credits / month",
     features: ["More previews", "Seller mockups", "Priority export jobs"]
   },
   {
+    planKey: "batch",
     name: "Batch",
     price: "$79",
     credits: "900 credits / month",
@@ -49,8 +59,8 @@ export default function PricingPage() {
           Credits for seller-ready output.
         </h1>
         <p className="mt-4 text-muted-foreground">
-          Subscription and Stripe wiring are scaffolded for the MVP path. These
-          plans define the product surface before checkout is connected.
+          Pick a plan for preview generation, Etsy-ready export packs, listing
+          copy, and buyer instructions.
         </p>
       </div>
       <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -67,9 +77,7 @@ export default function PricingPage() {
                 </li>
               ))}
             </ul>
-            <Button asChild className="mt-6 w-full">
-              <Link href="/app/new">Choose {plan.name}</Link>
-            </Button>
+            <PricingPlanAction planKey={plan.planKey} planName={plan.name} />
           </div>
         ))}
       </div>
