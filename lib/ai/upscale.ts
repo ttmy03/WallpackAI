@@ -9,9 +9,7 @@ export function getUpscaleProvider(): UpscaleProvider | null {
     return upscaleProvider;
   }
 
-  const provider =
-    process.env.UPSCALE_PROVIDER ??
-    (process.env.IMAGE_PROVIDER === "runware" ? "runware" : "mock");
+  const provider = process.env.UPSCALE_PROVIDER ?? "none";
 
   if (provider === "none") {
     upscaleProvider = null;
