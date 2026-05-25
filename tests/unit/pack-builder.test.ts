@@ -13,13 +13,14 @@ class RecordingUpscaleProvider implements UpscaleProvider {
 
   async upscale(input: UpscaleImageInput): Promise<UpscaledImage> {
     this.calls.push(input);
+    const callNumber = this.calls.length;
 
     return {
       ...input,
-      providerRequestId: `upscale-${this.calls.length}`,
+      providerRequestId: `upscale-${callNumber}`,
       usage: {
         model: "recording-upscale",
-        call: this.calls.length,
+        call: callNumber,
         targetWidth: input.targetWidth,
         targetHeight: input.targetHeight
       }
@@ -45,17 +46,36 @@ describe("print pack builder", () => {
     });
 
     expect(upscaleProvider.calls).toHaveLength(2);
-    expect(upscaleProvider.calls[0]).toMatchObject({
+    expect(upscaleProvider.calls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          targetWidth: 7200,
+          targetHeight: 10800
+        }),
+        expect.objectContaining({
+          targetWidth: 5400,
+          targetHeight: 7200
+        })
+      ])
+    );
+    const twoByThreeCall = upscaleProvider.calls.find(
+      (call) => call.targetWidth === 7200 && call.targetHeight === 10800
+    );
+    const threeByFourCall = upscaleProvider.calls.find(
+      (call) => call.targetWidth === 5400 && call.targetHeight === 7200
+    );
+    expect(twoByThreeCall).toMatchObject({
+      mimeType: "image/png",
+      width: 864,
+      height: 1296,
       targetWidth: 7200,
       targetHeight: 10800
     });
-    expect(upscaleProvider.calls[1]).toMatchObject({
+    expect(threeByFourCall).toMatchObject({
       targetWidth: 5400,
       targetHeight: 7200
     });
-    expect(upscaleProvider.calls[0]?.width).not.toBe(
-      upscaleProvider.calls[1]?.width
-    );
+    expect(twoByThreeCall?.width).not.toBe(threeByFourCall?.width);
     expect(result.files.map((file) => file.ratioKey)).toEqual(["2x3", "3x4"]);
     expect(result.files[0]).toMatchObject({
       ratioKey: "2x3",
@@ -98,13 +118,39 @@ describe("print pack builder", () => {
     });
 
     expect(upscaleProvider.calls).toHaveLength(2);
-    expect(upscaleProvider.calls[0]).toMatchObject({
+    expect(upscaleProvider.calls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          width: 864,
+          height: 1296,
+          targetWidth: 7200,
+          targetHeight: 10800
+        }),
+        expect.objectContaining({
+          width: 900,
+          height: 1200,
+          targetWidth: 5400,
+          targetHeight: 7200
+        })
+      ])
+    );
+    expect(
+      upscaleProvider.calls.find(
+        (call) => call.targetWidth === 7200 && call.targetHeight === 10800
+      )
+    ).toMatchObject({
+      mimeType: "image/png",
       width: 864,
       height: 1296,
       targetWidth: 7200,
       targetHeight: 10800
     });
-    expect(upscaleProvider.calls[1]).toMatchObject({
+    expect(
+      upscaleProvider.calls.find(
+        (call) => call.targetWidth === 5400 && call.targetHeight === 7200
+      )
+    ).toMatchObject({
+      mimeType: "image/png",
       width: 900,
       height: 1200,
       targetWidth: 5400,
@@ -131,6 +177,6 @@ describe("print pack builder", () => {
       }
     });
 
-    expect(builtRatioKeys).toEqual(["2x3", "3x4"]);
+    expect([...builtRatioKeys].sort()).toEqual(["2x3", "3x4"]);
   }, 20_000);
 });

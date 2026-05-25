@@ -14,6 +14,8 @@ const TARGET_PRINT_FILE_BYTES = 18 * 1024 * 1024;
 const PRINT_FILE_BACKGROUND = "#ffffff";
 const BLURRED_BACKGROUND_SIGMA = 36;
 const MEMORY_HEAVY_JPEG_ENCODER_THRESHOLD_MP = 40;
+const DEFAULT_PRINT_FILE_BUILD_CONCURRENCY = 5;
+const MAX_PRINT_FILE_BUILD_CONCURRENCY = 5;
 
 export type BuiltExportFile = {
   fileName: string;
@@ -49,6 +51,11 @@ export type PrintSourceImage = {
   height: number;
 };
 
+type PreparedPrintSource = PrintSourceImage & {
+  upscaleProvider: string;
+  upscaleUsage?: Record<string, unknown>;
+};
+
 export type BuildPrintFilesResult = {
   files: BuiltPrintFile[];
   warnings: string[];
@@ -68,70 +75,28 @@ export async function buildPrintFiles(input: {
   ratioKeys: PrintRatioPresetKey[];
   ratioSources?: Partial<Record<PrintRatioPresetKey, PrintSourceImage>>;
   upscaleProvider?: UpscaleProvider | null;
+  printFileConcurrency?: number;
   onFileBuilt?: (file: BuiltPrintFile) => Promise<void> | void;
 }): Promise<BuildPrintFilesResult> {
-  const warnings: string[] = [];
-  const files: BuiltPrintFile[] = [];
-
-  for (const ratioKey of input.ratioKeys) {
-    const preset = getPrintRatioPreset(ratioKey);
-    const pixels = presetKeyToPixels(ratioKey);
-    const sourceImage =
-      input.ratioSources?.[ratioKey] ??
-      ({
-        bytes: input.sourceBytes,
-        mimeType: input.sourceMimeType,
-        width: input.sourceWidth,
-        height: input.sourceHeight
-      } satisfies PrintSourceImage);
-    const source = await prepareSourceForPrintFile({
-      sourceBytes: sourceImage.bytes,
-      sourceMimeType: sourceImage.mimeType,
-      sourceWidth: sourceImage.width,
-      sourceHeight: sourceImage.height,
-      targetWidth: pixels.width,
-      targetHeight: pixels.height,
-      upscaleProvider: input.upscaleProvider
-    });
-    const rendered = await renderJpegWithinTarget(
-      source.bytes,
-      {
-        width: source.width,
-        height: source.height
-      },
-      {
-        width: pixels.width,
-        height: pixels.height
-      }
-    );
-
-    if (rendered.bytes.byteLength > TARGET_PRINT_FILE_BYTES) {
-      warnings.push(
-        `${preset.fileName} is above the 18 MB Etsy safety target after compression.`
-      );
+  const notifyFileBuilt = createSerialFileBuiltCallback(input.onFileBuilt);
+  const buildResults = await mapWithConcurrency(
+    input.ratioKeys,
+    getPrintFileBuildConcurrency(input.printFileConcurrency),
+    async (ratioKey) => {
+      return buildPrintFile({
+        sourceBytes: input.sourceBytes,
+        sourceMimeType: input.sourceMimeType,
+        sourceWidth: input.sourceWidth,
+        sourceHeight: input.sourceHeight,
+        ratioKey,
+        ratioSource: input.ratioSources?.[ratioKey],
+        upscaleProvider: input.upscaleProvider,
+        onFileBuilt: notifyFileBuilt
+      });
     }
-
-    const file: BuiltPrintFile = {
-      fileName: preset.fileName,
-      bytes: rendered.bytes,
-      contentType: "image/jpeg",
-      kind: "print_jpg",
-      ratioKey,
-      width: pixels.width,
-      height: pixels.height,
-      workingWidth: source.width,
-      workingHeight: source.height,
-      upscaleProvider: source.upscaleProvider,
-      upscaleUsage: source.upscaleUsage,
-      quality: rendered.quality,
-      resizeFactor:
-        Math.max(pixels.width, pixels.height) /
-        Math.max(source.width, source.height)
-    };
-
-    files.push(file);
-    await input.onFileBuilt?.(file);
-  }
+  );
+  const files = buildResults.map((result) => result.file);
+  const warnings = buildResults.flatMap((result) => result.warnings);
 
   return {
     files,
@@ -160,6 +125,101 @@ export async function buildPrintFiles(input: {
   };
 }
 
+async function buildPrintFile(input: {
+  sourceBytes: Buffer;
+  sourceMimeType: "image/png" | "image/jpeg" | "image/webp";
+  sourceWidth: number;
+  sourceHeight: number;
+  ratioKey: PrintRatioPresetKey;
+  ratioSource?: PrintSourceImage;
+  upscaleProvider?: UpscaleProvider | null;
+  onFileBuilt?: (file: BuiltPrintFile) => Promise<void> | void;
+}) {
+  const warnings: string[] = [];
+  const preset = getPrintRatioPreset(input.ratioKey);
+  const pixels = presetKeyToPixels(input.ratioKey);
+  const sourceImage =
+    input.ratioSource ??
+    ({
+      bytes: input.sourceBytes,
+      mimeType: input.sourceMimeType,
+      width: input.sourceWidth,
+      height: input.sourceHeight
+    } satisfies PrintSourceImage);
+  const source = await prepareSourceForPrintFile({
+    sourceBytes: sourceImage.bytes,
+    sourceMimeType: sourceImage.mimeType,
+    sourceWidth: sourceImage.width,
+    sourceHeight: sourceImage.height,
+    targetWidth: pixels.width,
+    targetHeight: pixels.height,
+    upscaleProvider: input.upscaleProvider
+  });
+  const targetPixels = {
+    width: pixels.width,
+    height: pixels.height
+  };
+  const rendered =
+    printReadySourceAsRenderedJpeg(source, targetPixels) ??
+    (await renderJpegWithinTarget(
+      source.bytes,
+      {
+        width: source.width,
+        height: source.height
+      },
+      targetPixels
+    ));
+
+  if (rendered.bytes.byteLength > TARGET_PRINT_FILE_BYTES) {
+    warnings.push(
+      `${preset.fileName} is above the 18 MB Etsy safety target after compression.`
+    );
+  }
+
+  const file: BuiltPrintFile = {
+    fileName: preset.fileName,
+    bytes: rendered.bytes,
+    contentType: "image/jpeg",
+    kind: "print_jpg",
+    ratioKey: input.ratioKey,
+    width: pixels.width,
+    height: pixels.height,
+    workingWidth: source.width,
+    workingHeight: source.height,
+    upscaleProvider: source.upscaleProvider,
+    upscaleUsage: source.upscaleUsage,
+    quality: rendered.quality,
+    resizeFactor:
+      Math.max(pixels.width, pixels.height) /
+      Math.max(source.width, source.height)
+  };
+
+  await input.onFileBuilt?.(file);
+
+  return {
+    file,
+    warnings
+  };
+}
+
+function createSerialFileBuiltCallback(
+  callback?: (file: BuiltPrintFile) => Promise<void> | void
+) {
+  if (!callback) {
+    return undefined;
+  }
+
+  let pending = Promise.resolve();
+
+  return (file: BuiltPrintFile) => {
+    // Keep progress persistence ordered while print rendering runs in parallel.
+    const next = pending.then(() => callback(file));
+    pending = next.catch(() => undefined);
+
+    return next;
+  };
+}
+
 export function printFileToView(file: BuiltPrintFile): ExportPrintFileView {
   return {
     ratioKey: file.ratioKey,
@@ -180,23 +240,25 @@ async function prepareSourceForPrintFile(input: {
   targetWidth: number;
   targetHeight: number;
   upscaleProvider?: UpscaleProvider | null;
-}) {
-  const ratioSource = await renderRatioSourceImage(input);
-
+}): Promise<PreparedPrintSource> {
   if (!input.upscaleProvider) {
+    const ratioSource = await renderRatioSourceImage(input);
+
     return {
       bytes: ratioSource.bytes,
+      mimeType: ratioSource.mimeType,
       width: ratioSource.width,
       height: ratioSource.height,
       upscaleProvider: "none"
     };
   }
 
+  const upscaleSource = await prepareSourceForProviderUpscale(input);
   const upscaled = await input.upscaleProvider.upscale({
-    bytes: ratioSource.bytes,
-    mimeType: "image/jpeg",
-    width: ratioSource.width,
-    height: ratioSource.height,
+    bytes: upscaleSource.bytes,
+    mimeType: upscaleSource.mimeType,
+    width: upscaleSource.width,
+    height: upscaleSource.height,
     targetWidth: input.targetWidth,
     targetHeight: input.targetHeight
   });
@@ -204,6 +266,7 @@ async function prepareSourceForPrintFile(input: {
 
   return {
     bytes: Buffer.from(upscaled.bytes),
+    mimeType: upscaled.mimeType,
     width: metadata.width ?? upscaled.width,
     height: metadata.height ?? upscaled.height,
     upscaleProvider:
@@ -211,6 +274,45 @@ async function prepareSourceForPrintFile(input: {
         ? upscaled.usage.model
         : "upscale",
     upscaleUsage: upscaled.usage
+  };
+}
+
+async function prepareSourceForProviderUpscale(input: {
+  sourceBytes: Buffer;
+  sourceMimeType: "image/png" | "image/jpeg" | "image/webp";
+  sourceWidth: number;
+  sourceHeight: number;
+  targetWidth: number;
+  targetHeight: number;
+}): Promise<PrintSourceImage> {
+  if (matchesTargetAspectRatio(input)) {
+    return {
+      bytes: input.sourceBytes,
+      mimeType: input.sourceMimeType,
+      width: input.sourceWidth,
+      height: input.sourceHeight
+    };
+  }
+
+  return renderRatioSourceImage(input);
+}
+
+function printReadySourceAsRenderedJpeg(
+  source: PreparedPrintSource,
+  targetPixels: { width: number; height: number }
+) {
+  if (
+    source.mimeType !== "image/jpeg" ||
+    source.width !== targetPixels.width ||
+    source.height !== targetPixels.height ||
+    source.bytes.byteLength > TARGET_PRINT_FILE_BYTES
+  ) {
+    return null;
+  }
+
+  return {
+    bytes: source.bytes,
+    quality: 95
   };
 }
 
@@ -239,9 +341,22 @@ async function renderRatioSourceImage(input: {
 
   return {
     bytes: rendered.bytes,
+    mimeType: "image/jpeg" as const,
     width: canvas.width,
     height: canvas.height
   };
+}
+
+function matchesTargetAspectRatio(input: {
+  sourceWidth: number;
+  sourceHeight: number;
+  targetWidth: number;
+  targetHeight: number;
+}) {
+  const sourceAspectRatio = input.sourceWidth / input.sourceHeight;
+  const targetAspectRatio = input.targetWidth / input.targetHeight;
+
+  return Math.abs(sourceAspectRatio - targetAspectRatio) <= 0.005;
 }
 
 function ratioSourceCanvasSize(input: {
@@ -281,6 +396,45 @@ function maxPrintFileDimension(
   return files.length > 0
     ? Math.max(...files.map((file) => file[key]))
     : fallback;
+}
+
+function getPrintFileBuildConcurrency(inputConcurrency?: number) {
+  const envConcurrency = Number.parseInt(
+    process.env.EXPORT_PRINT_FILE_CONCURRENCY ?? "",
+    10
+  );
+  const concurrency = inputConcurrency ?? envConcurrency;
+
+  if (!Number.isFinite(concurrency)) {
+    return DEFAULT_PRINT_FILE_BUILD_CONCURRENCY;
+  }
+
+  return Math.min(
+    MAX_PRINT_FILE_BUILD_CONCURRENCY,
+    Math.max(1, Math.floor(concurrency))
+  );
+}
+
+async function mapWithConcurrency<T, U>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<U>
+) {
+  const results = new Array<U>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(items.length, concurrency);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await mapper(items[index], index);
+      }
+    })
+  );
+
+  return results;
 }
 
 async function renderJpegWithinTarget(

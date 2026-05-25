@@ -41,6 +41,17 @@ describe("upscale provider selection", () => {
       }
     });
   });
+
+  it("allows explicitly opting into Runware P-Image Upscale", async () => {
+    process.env.UPSCALE_PROVIDER = "runware";
+
+    const { getUpscaleProvider } = await import("@/lib/ai/upscale");
+    const { RunwareUpscaleProvider } = await import(
+      "@/lib/ai/providers/runware"
+    );
+
+    expect(getUpscaleProvider()).toBeInstanceOf(RunwareUpscaleProvider);
+  });
 });
 
 function restoreEnv(name: string, value: string | undefined) {
