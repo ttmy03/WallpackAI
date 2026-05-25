@@ -74,7 +74,7 @@
 2. UI explains credits required.
 3. User clicks `Upgrade`.
 4. Stripe Checkout opens.
-5. Stripe webhook sets subscription active and adds monthly credit grant.
+5. Stripe webhook sets subscription active and resets credits to the plan's monthly allowance.
 6. User returns to project and continues export.
 
 ## Flow F: Prompt blocked

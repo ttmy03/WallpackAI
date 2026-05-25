@@ -141,13 +141,13 @@ Done when:
 3. Add billing portal route.
 4. Add webhook route with signature verification.
 5. Update subscription model.
-6. Grant monthly credits on invoice paid.
+6. Reset credits to the plan's monthly allowance once per paid billing period.
 7. Add tests for webhook idempotency.
 
 Done when:
 
 - User can upgrade.
-- Paid invoice grants credits once.
+- Paid billing period resets credits once.
 - Portal manages subscription.
 
 ## Phase 10: QA, polish, launch

@@ -3,6 +3,7 @@ export type CreditLedgerEntryType =
   | "reserve"
   | "commit"
   | "refund"
+  | "reset"
   | "admin_adjustment";
 
 export type CreditLedgerEntry = {
@@ -65,6 +66,16 @@ export class InMemoryCreditLedger {
       ...input,
       amount: Math.abs(input.amount),
       type: "refund"
+    });
+  }
+
+  reset(
+    input: Omit<ApplyCreditInput, "amount" | "type"> & { balance: number }
+  ) {
+    return this.apply({
+      ...input,
+      amount: input.balance - this.getBalance(input.userId),
+      type: "reset"
     });
   }
 

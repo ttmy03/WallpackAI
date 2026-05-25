@@ -19,6 +19,11 @@ type FirestoreCreditLedgerEntryDocument = Omit<
   metadata?: Record<string, unknown>;
 };
 
+type FirestoreCreditEntryInput = Omit<ApplyCreditInput, "amount"> & {
+  amount: number | ((balanceBefore: number) => number);
+  metadata?: Record<string, unknown>;
+};
+
 export async function getFirestoreCreditBalance(userId: string) {
   const snapshot = await getFirebaseFirestore()
     .doc(userDocumentPath(userId))
@@ -66,8 +71,25 @@ export async function refundFirestoreCredits(
   });
 }
 
+export async function resetFirestoreCredits(
+  input: Omit<ApplyCreditInput, "amount" | "type"> & {
+    balance: number;
+    metadata?: Record<string, unknown>;
+  }
+) {
+  return applyFirestoreCreditEntry({
+    userId: input.userId,
+    amount: (balanceBefore) => input.balance - balanceBefore,
+    type: "reset",
+    reason: input.reason,
+    idempotencyKey: input.idempotencyKey,
+    relatedJobId: input.relatedJobId,
+    metadata: input.metadata
+  });
+}
+
 async function applyFirestoreCreditEntry(
-  input: ApplyCreditInput & { metadata?: Record<string, unknown> }
+  input: FirestoreCreditEntryInput
 ) {
   const db = getFirebaseFirestore();
   const entryId = creditEntryIdFromIdempotencyKey(input.idempotencyKey);
@@ -89,7 +111,11 @@ async function applyFirestoreCreditEntry(
       userSnapshot.data()?.creditBalance,
       0
     );
-    const balanceAfter = balanceBefore + input.amount;
+    const amount =
+      typeof input.amount === "function"
+        ? input.amount(balanceBefore)
+        : input.amount;
+    const balanceAfter = balanceBefore + amount;
 
     if (balanceAfter < 0) {
       throw new InsufficientCreditsError();
@@ -99,7 +125,7 @@ async function applyFirestoreCreditEntry(
     const entry: FirestoreCreditLedgerEntryDocument = {
       id: entryId,
       userId: input.userId,
-      amount: input.amount,
+      amount,
       balanceAfter,
       type: input.type,
       reason: input.reason,
@@ -155,6 +181,7 @@ function creditLedgerEntryTypeOrFallback(
     value === "reserve" ||
     value === "commit" ||
     value === "refund" ||
+    value === "reset" ||
     value === "admin_adjustment"
   ) {
     return value;

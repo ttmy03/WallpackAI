@@ -77,7 +77,7 @@ Test:
 
 - Create project -> enqueue generation -> mock provider returns image -> artwork saved.
 - Export selected artwork -> artifacts saved -> signed URLs returned.
-- Stripe webhook -> subscription active -> credits granted.
+- Stripe webhook -> subscription active -> credits reset to the plan's monthly allowance.
 - Failed provider job -> credits refunded.
 
 ## E2E tests

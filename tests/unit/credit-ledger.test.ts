@@ -74,4 +74,38 @@ describe("credit ledger", () => {
     expect(ledger.getBalance("user_1")).toBe(5);
     expect(ledger.getEntries("user_1")).toHaveLength(3);
   });
+
+  it("resets subscription credits instead of rolling unused credits forward", () => {
+    const ledger = new InMemoryCreditLedger();
+
+    ledger.grant({
+      userId: "user_1",
+      amount: 80,
+      reason: "starter monthly credit reset",
+      idempotencyKey: "subscription:reset:period_1"
+    });
+    ledger.reserve({
+      userId: "user_1",
+      amount: 10,
+      reason: "generation",
+      idempotencyKey: "generation:reserve:job_1",
+      relatedJobId: "job_1"
+    });
+    ledger.reset({
+      userId: "user_1",
+      balance: 80,
+      reason: "starter monthly credit reset",
+      idempotencyKey: "subscription:reset:period_2"
+    });
+    ledger.reset({
+      userId: "user_1",
+      balance: 80,
+      reason: "starter monthly credit reset duplicate",
+      idempotencyKey: "subscription:reset:period_2"
+    });
+
+    expect(ledger.getBalance("user_1")).toBe(80);
+    expect(ledger.getEntries("user_1")).toHaveLength(3);
+    expect(ledger.getEntries("user_1").at(-1)?.amount).toBe(10);
+  });
 });

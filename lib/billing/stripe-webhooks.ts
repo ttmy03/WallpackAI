@@ -1,6 +1,6 @@
 import type Stripe from "stripe";
 
-import { grantFirestoreCredits } from "@/lib/billing/firestore-credit-ledger";
+import { resetFirestoreCredits } from "@/lib/billing/firestore-credit-ledger";
 import { PLAN_MONTHLY_CREDITS, type PlanKey } from "@/lib/billing/plans";
 import {
   getStripe,
@@ -127,7 +127,7 @@ async function syncStripeSubscription(input: {
     subscription: input.subscription,
     latestEventId: input.eventId
   });
-  await grantSubscriptionCredits({
+  await resetSubscriptionCredits({
     userId: user.id,
     planKey,
     subscription: input.subscription,
@@ -148,24 +148,24 @@ function isEntitledSubscriptionStatus(status: Stripe.Subscription.Status) {
   return status === "active" || status === "trialing";
 }
 
-async function grantSubscriptionCredits(input: {
+async function resetSubscriptionCredits(input: {
   userId: string;
   planKey: PlanKey;
   subscription: Stripe.Subscription;
   eventId: string;
   stripeCustomerId: string | null;
 }) {
-  const amount = PLAN_MONTHLY_CREDITS[input.planKey];
+  const balance = PLAN_MONTHLY_CREDITS[input.planKey];
   const period = subscriptionCreditPeriod(input.subscription);
 
-  if (amount <= 0 || !period.start) {
+  if (balance <= 0 || !period.start) {
     return;
   }
 
-  await grantFirestoreCredits({
+  await resetFirestoreCredits({
     userId: input.userId,
-    amount,
-    reason: `${input.planKey} subscription credits`,
+    balance,
+    reason: `${input.planKey} monthly credit reset`,
     idempotencyKey: [
       "stripe",
       "subscription",
@@ -181,6 +181,7 @@ async function grantSubscriptionCredits(input: {
       stripeSubscriptionId: input.subscription.id,
       stripeSubscriptionStatus: input.subscription.status,
       planKey: input.planKey,
+      resetBalanceTo: balance,
       currentPeriodStart: timestampSecondsToIso(period.start),
       currentPeriodEnd: timestampSecondsToIso(period.end)
     }

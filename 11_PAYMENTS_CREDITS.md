@@ -44,7 +44,7 @@ Use Stripe Checkout for plan purchase and Stripe Customer Portal for subscriptio
 3. User pays on Stripe-hosted checkout.
 4. Stripe webhook receives `checkout.session.completed` and subscription events.
 5. App updates subscription status.
-6. On `invoice.paid`, grant monthly credits using idempotency key.
+6. On the first paid subscription event for a billing period, reset credits to the plan's monthly allowance using an idempotency key.
 
 ### Portal flow
 
@@ -84,11 +84,13 @@ Every credit movement must have unique `idempotencyKey`.
 Examples:
 
 ```txt
-subscription:grant:invoice_in_123
+subscription:reset:sub_123:period_start
 export:reserve:exp_123
 export:commit:exp_123
 export:refund:exp_123
 ```
+
+Subscription resets do not roll unused monthly credits forward into the next billing period.
 
 ### Negative balance
 
