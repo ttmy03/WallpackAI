@@ -103,6 +103,10 @@ async function syncStripeSubscription(input: {
   });
 
   if (!user) {
+    if (input.subscription.status === "canceled") {
+      return;
+    }
+
     throw new Error(
       `No Firestore user found for Stripe subscription ${input.subscription.id}.`
     );

@@ -28,7 +28,19 @@ export type ProjectDetail = {
 export type UserSettings = {
   email: string | null;
   name: string | null;
+  planKey: PlanStatus["planKey"];
+  planLabel: string;
+  creditBalance: number;
+  hasStripeCustomer: boolean;
   defaultAiDisclosure: boolean;
+};
+
+export type BillingPortalResponse = {
+  url: string;
+};
+
+export type DeleteAccountResponse = {
+  deleted: true;
 };
 
 export type RetryGenerationResponse = {

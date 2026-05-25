@@ -1,10 +1,12 @@
 "use client";
 
-import { Loader2, Save } from "lucide-react";
+import { CreditCard, Loader2, Save, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { signOut } from "firebase/auth";
 
 import { fetchAuthenticatedApi } from "@/components/app/authenticated-api";
+import { BillingPortalButton } from "@/components/app/billing-portal-button";
 import {
   AppErrorState,
   AppLoadingState
@@ -17,7 +19,9 @@ import {
   CardHeader,
   CardTitle
 } from "@/components/ui/card";
-import type { UserSettings } from "@/lib/app/api-types";
+import { Input } from "@/components/ui/input";
+import type { DeleteAccountResponse, UserSettings } from "@/lib/app/api-types";
+import { getFirebaseClientAuth } from "@/lib/firebase/client";
 
 export function SettingsClient() {
   const [settings, setSettings] = useState<UserSettings | null>(null);
@@ -25,6 +29,9 @@ export function SettingsClient() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,6 +89,27 @@ export function SettingsClient() {
       );
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      await fetchAuthenticatedApi<DeleteAccountResponse>("/api/app/account", {
+        method: "DELETE",
+        body: JSON.stringify({ confirmation: deleteConfirmation })
+      });
+      await signOut(getFirebaseClientAuth()).catch(() => undefined);
+      window.location.assign("/");
+    } catch (caughtError) {
+      setDeleteError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Account could not be deleted."
+      );
+      setIsDeleting(false);
     }
   }
 
@@ -159,14 +187,78 @@ export function SettingsClient() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Billing</CardTitle>
+            <CardTitle>Subscription</CardTitle>
             <CardDescription>
-              Checkout and customer portal routes are not connected yet.
+              Manage the plan used for Etsy pack exports and monthly credits.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Button asChild>
-              <Link href="/app/settings/billing">Open billing</Link>
+          <CardContent className="space-y-4">
+            <div className="rounded-md border bg-background px-3 py-2 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-medium">{settings.planLabel}</span>
+                <span className="text-muted-foreground">
+                  {settings.creditBalance} credits
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              {settings.hasStripeCustomer ? (
+                <BillingPortalButton variant="default">
+                  Manage subscription
+                </BillingPortalButton>
+              ) : (
+                <Button asChild>
+                  <Link href="/pricing">
+                    <CreditCard />
+                    View plans
+                  </Link>
+                </Button>
+              )}
+              <Button asChild variant="outline">
+                <Link href="/app/settings/billing">Open billing</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-destructive/40 lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Delete account</CardTitle>
+            <CardDescription>
+              Permanently remove your account, projects, generated artwork,
+              exports, and Firebase sign-in. Any stored Stripe subscription is
+              cancelled before deletion.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-2 sm:max-w-sm">
+              <label
+                className="text-sm font-medium"
+                htmlFor="delete-confirmation"
+              >
+                Type DELETE to confirm.
+              </label>
+              <Input
+                id="delete-confirmation"
+                value={deleteConfirmation}
+                onChange={(event) =>
+                  setDeleteConfirmation(event.currentTarget.value)
+                }
+                autoComplete="off"
+              />
+            </div>
+            {deleteError ? (
+              <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {deleteError}
+              </p>
+            ) : null}
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleteConfirmation !== "DELETE" || isDeleting}
+              onClick={() => void handleDeleteAccount()}
+            >
+              {isDeleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
+              Delete account
             </Button>
           </CardContent>
         </Card>

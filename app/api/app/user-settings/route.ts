@@ -4,6 +4,7 @@ import { z } from "zod";
 import { fail, ok } from "@/lib/api-response";
 import type { UserSettings } from "@/lib/app/api-types";
 import { requireAppUser } from "@/lib/auth/api-auth";
+import { planLabelForPlanKey } from "@/lib/billing/plans";
 import { updateFirestoreUserSettings } from "@/lib/firestore/users";
 
 const userSettingsSchema = z.object({
@@ -52,11 +53,18 @@ export async function PATCH(request: Request) {
 function userToSettings(user: {
   email: string | null;
   name: string | null;
+  planKey: UserSettings["planKey"];
+  creditBalance: number;
+  stripeCustomerId: string | null;
   defaultAiDisclosure: boolean;
 }): UserSettings {
   return {
     email: user.email,
     name: user.name,
+    planKey: user.planKey,
+    planLabel: planLabelForPlanKey(user.planKey),
+    creditBalance: user.creditBalance,
+    hasStripeCustomer: Boolean(user.stripeCustomerId),
     defaultAiDisclosure: user.defaultAiDisclosure
   };
 }

@@ -42,6 +42,10 @@ export function isFreePlan(planKey: PlanKey) {
   return planKey === FREE_PLAN_KEY;
 }
 
+export function planLabelForPlanKey(planKey: PlanKey) {
+  return PLAN_LABELS[planKey];
+}
+
 export function createPlanStatus(input: {
   planKey: PlanKey;
   generationJobs: Pick<GenerationJobView, "requestedCount" | "status">[];
