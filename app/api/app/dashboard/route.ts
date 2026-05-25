@@ -7,7 +7,7 @@ import { getUserPlanStatus } from "@/lib/billing/plan-usage";
 import { listFirestoreExportJobsForUser } from "@/lib/firestore/export-jobs";
 import { listFirestoreGenerationJobsForUser } from "@/lib/firestore/generation-jobs";
 import { listFirestoreProjectsForUser } from "@/lib/firestore/projects";
-import { getLocalCreditBalance } from "@/lib/jobs/local-generation-runner";
+import { getCreditBalance } from "@/lib/jobs/local-generation-runner";
 
 export async function GET(request: Request) {
   const auth = await requireAppUser(request, "opening the dashboard");
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
   );
   const data: DashboardSummary = {
     plan: await getUserPlanStatus(auth.firestoreUser),
-    creditBalance: getLocalCreditBalance(auth.firestoreUser.id),
+    creditBalance: await getCreditBalance(auth.firestoreUser.id),
     recentProjects: recentProjects.slice(0, 5),
     recentGenerationJobs,
     jobsNeedingAction: recentGenerationJobs.filter(

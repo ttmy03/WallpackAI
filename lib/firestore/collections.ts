@@ -4,7 +4,9 @@ export const FIRESTORE_COLLECTIONS = {
   generationJobs: "generationJobs",
   exportJobs: "exportJobs",
   artworks: "artworks",
-  creditLedgerEntries: "creditLedgerEntries"
+  creditLedgerEntries: "creditLedgerEntries",
+  subscriptions: "subscriptions",
+  stripeWebhookEvents: "stripeWebhookEvents"
 } as const;
 
 export function assertFirestoreDocumentId(value: string, label: string) {
@@ -47,5 +49,26 @@ export function artworkDocumentPath(artworkId: string) {
   return `${FIRESTORE_COLLECTIONS.artworks}/${assertFirestoreDocumentId(
     artworkId,
     "artworkId"
+  )}`;
+}
+
+export function creditLedgerEntryDocumentPath(entryId: string) {
+  return `${FIRESTORE_COLLECTIONS.creditLedgerEntries}/${assertFirestoreDocumentId(
+    entryId,
+    "entryId"
+  )}`;
+}
+
+export function subscriptionDocumentPath(subscriptionId: string) {
+  return `${FIRESTORE_COLLECTIONS.subscriptions}/${assertFirestoreDocumentId(
+    subscriptionId,
+    "subscriptionId"
+  )}`;
+}
+
+export function stripeWebhookEventDocumentPath(eventId: string) {
+  return `${FIRESTORE_COLLECTIONS.stripeWebhookEvents}/${assertFirestoreDocumentId(
+    eventId,
+    "eventId"
   )}`;
 }

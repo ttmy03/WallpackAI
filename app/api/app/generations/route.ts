@@ -3,7 +3,11 @@ import { z } from "zod";
 
 import { fail, ok } from "@/lib/api-response";
 import { requireAppUser } from "@/lib/auth/api-auth";
-import { canQueuePreviewBatch, previewCountForPlan } from "@/lib/billing/plans";
+import {
+  canQueuePreviewBatch,
+  isFreePlan,
+  previewCountForPlan
+} from "@/lib/billing/plans";
 import { getUserPlanStatus } from "@/lib/billing/plan-usage";
 import {
   createFirestoreProject,
@@ -82,6 +86,7 @@ export async function POST(request: Request) {
     projectName: project.name,
     promptInputs: parsed.data.promptInputs,
     previewCount,
+    creditCost: isFreePlan(plan.planKey) ? 0 : previewCount,
     quality: parsed.data.quality
   }).catch((error: unknown) => {
     if (error instanceof Error) {

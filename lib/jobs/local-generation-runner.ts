@@ -8,6 +8,12 @@ import {
   InsufficientCreditsError
 } from "@/lib/billing/credit-ledger";
 import {
+  commitFirestoreCredits,
+  getFirestoreCreditBalance,
+  refundFirestoreCredits,
+  reserveFirestoreCredits
+} from "@/lib/billing/firestore-credit-ledger";
+import {
   getFirestoreGenerationJobForUser,
   saveFirestoreGenerationJob
 } from "@/lib/firestore/generation-jobs";
@@ -68,6 +74,7 @@ type EnqueueLocalGenerationInput = {
   projectName?: string;
   promptInputs: PromptInput;
   previewCount: number;
+  creditCost?: number;
   quality?: GenerationQuality;
 };
 
@@ -108,7 +115,7 @@ export async function enqueueLocalGenerationJob(
     status: "queued",
     stage: "queued",
     requestedCount: previewCount,
-    creditCost: previewCount,
+    creditCost: input.creditCost ?? previewCount,
     creditReserved: false,
     creditCommitted: false,
     prompt: builtPrompt.prompt,
@@ -278,33 +285,64 @@ export function getLocalCreditBalance(userId: string) {
   return state.ledger.getBalance(userId);
 }
 
-export function reserveLocalCredits(input: {
+export async function getCreditBalance(userId: string) {
+  if (shouldUseInMemoryCreditLedger()) {
+    return getLocalCreditBalance(userId);
+  }
+
+  return getFirestoreCreditBalance(userId);
+}
+
+export async function reserveLocalCredits(input: {
   userId: string;
   amount: number;
   reason: string;
   idempotencyKey: string;
   relatedJobId?: string;
 }) {
+  if (input.amount <= 0) {
+    return;
+  }
+
+  if (!shouldUseInMemoryCreditLedger()) {
+    await reserveFirestoreCredits(input);
+    return;
+  }
+
   ensureDevCredits(input.userId);
   state.ledger.reserve(input);
 }
 
-export function commitLocalCredits(input: {
+export async function commitLocalCredits(input: {
   userId: string;
   reason: string;
   idempotencyKey: string;
   relatedJobId?: string;
 }) {
+  if (!shouldUseInMemoryCreditLedger()) {
+    await commitFirestoreCredits(input);
+    return;
+  }
+
   state.ledger.commit(input);
 }
 
-export function refundLocalCredits(input: {
+export async function refundLocalCredits(input: {
   userId: string;
   amount: number;
   reason: string;
   idempotencyKey: string;
   relatedJobId?: string;
 }) {
+  if (input.amount <= 0) {
+    return;
+  }
+
+  if (!shouldUseInMemoryCreditLedger()) {
+    await refundFirestoreCredits(input);
+    return;
+  }
+
   state.ledger.refund(input);
 }
 
@@ -347,15 +385,14 @@ async function processLocalGenerationJob(jobId: string) {
       return;
     }
 
-    ensureDevCredits(job.userId);
-    state.ledger.reserve({
+    await reserveLocalCredits({
       userId: job.userId,
       amount: job.creditCost,
       reason: "Preview generation",
       idempotencyKey: `${job.id}:reserve`,
       relatedJobId: job.id
     });
-    job.creditReserved = true;
+    job.creditReserved = job.creditCost > 0;
     await persistGenerationJob(job);
 
     if (isGenerationJobCancelled(job)) {
@@ -390,13 +427,15 @@ async function processLocalGenerationJob(jobId: string) {
       )
     );
 
-    state.ledger.commit({
-      userId: job.userId,
-      reason: "Preview generation succeeded",
-      idempotencyKey: `${job.id}:commit`,
-      relatedJobId: job.id
-    });
-    job.creditCommitted = true;
+    if (job.creditReserved) {
+      await commitLocalCredits({
+        userId: job.userId,
+        reason: "Preview generation succeeded",
+        idempotencyKey: `${job.id}:commit`,
+        relatedJobId: job.id
+      });
+      job.creditCommitted = true;
+    }
     job.status = "succeeded";
     job.stage = "complete";
     job.completedAt = new Date();
@@ -404,7 +443,7 @@ async function processLocalGenerationJob(jobId: string) {
     await persistProjectGenerated(job, "ready");
   } catch (error) {
     if (job.creditReserved && !job.creditCommitted) {
-      state.ledger.refund({
+      await refundLocalCredits({
         userId: job.userId,
         amount: job.creditCost,
         reason: "Preview generation failed",
@@ -428,6 +467,13 @@ async function processLocalGenerationJob(jobId: string) {
     await persistGenerationJob(job).catch(() => undefined);
     await persistProjectGenerated(job, "failed").catch(() => undefined);
   }
+}
+
+function shouldUseInMemoryCreditLedger() {
+  return (
+    process.env.NODE_ENV === "test" ||
+    process.env.CREDIT_LEDGER_PROVIDER === "memory"
+  );
 }
 
 function ensureDevCredits(userId: string) {

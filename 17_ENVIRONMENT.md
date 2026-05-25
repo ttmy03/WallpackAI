@@ -40,12 +40,13 @@ DISABLE_GENERATION=false
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
-STRIPE_PRICE_STARTER_MONTHLY=
-STRIPE_PRICE_PRO_MONTHLY=
-STRIPE_PRICE_STUDIO_MONTHLY=
+STRIPE_PRICE_STARTER_ID=
+STRIPE_PRICE_STUDIO_ID=
+STRIPE_PRICE_BATCH_ID=
 
 # Jobs
 JOB_RUNNER=local
+CREDIT_LEDGER_PROVIDER=firestore
 TRIGGER_SECRET_KEY=
 INNGEST_EVENT_KEY=
 INNGEST_SIGNING_KEY=
@@ -133,7 +134,7 @@ Image generation is temporarily unavailable. Existing exports are still accessib
 Use Stripe CLI:
 
 ```bash
-stripe listen --forward-to localhost:3000/api/webhooks/stripe
+stripe listen --forward-to localhost:3000/api/stripe/webhook
 ```
 
 Copy webhook signing secret into `.env.local`.

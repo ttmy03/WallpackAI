@@ -21,7 +21,10 @@ import {
   type FirestoreProject
 } from "@/lib/firestore/projects";
 import type { GeneratedArtworkPreview } from "@/lib/jobs/generation-types";
-import type { ExportArtifactView, ExportJobView } from "@/lib/jobs/export-types";
+import type {
+  ExportArtifactView,
+  ExportJobView
+} from "@/lib/jobs/export-types";
 import type { JobStatus } from "@/lib/jobs/job-runner";
 import {
   commitLocalCredits,
@@ -92,7 +95,10 @@ const state =
   });
 
 export async function enqueueLocalExportJob(input: EnqueueLocalExportInput) {
-  const project = await getFirestoreProjectForUser(input.userId, input.projectId);
+  const project = await getFirestoreProjectForUser(
+    input.userId,
+    input.projectId
+  );
 
   if (!project) {
     return {
@@ -231,7 +237,7 @@ async function processLocalExportJob(jobId: string) {
   await persistExportJob(job);
 
   try {
-    reserveLocalCredits({
+    await reserveLocalCredits({
       userId: job.userId,
       amount: job.creditCost,
       reason: "Etsy pack export",
@@ -305,7 +311,7 @@ async function processLocalExportJob(jobId: string) {
     });
     job.warnings = [...job.warnings, ...artifactSizeWarnings(job.artifacts)];
 
-    commitLocalCredits({
+    await commitLocalCredits({
       userId: job.userId,
       reason: "Etsy pack export succeeded",
       idempotencyKey: `${job.id}:commit`,
@@ -318,7 +324,7 @@ async function processLocalExportJob(jobId: string) {
     await persistExportJob(job);
   } catch (error) {
     if (job.creditReserved && !job.creditCommitted) {
-      refundLocalCredits({
+      await refundLocalCredits({
         userId: job.userId,
         amount: job.creditCost,
         reason: "Etsy pack export failed",
@@ -334,9 +340,7 @@ async function processLocalExportJob(jobId: string) {
         ? "INSUFFICIENT_CREDITS"
         : "EXPORT_FAILED";
     job.errorMessage =
-      error instanceof Error
-        ? error.message
-        : "Export failed unexpectedly.";
+      error instanceof Error ? error.message : "Export failed unexpectedly.";
     job.retryable = !(error instanceof InsufficientCreditsError);
     job.completedAt = new Date();
     await persistExportJob(job).catch(() => undefined);
@@ -532,7 +536,10 @@ async function uploadPartitionedZips(input: {
   jobId: string;
   allFiles: BuiltExportFile[];
   printFiles: BuiltPrintFile[];
-  uploadPartitions: Array<{ uploadName: string; files: Array<{ fileName: string }> }>;
+  uploadPartitions: Array<{
+    uploadName: string;
+    files: Array<{ fileName: string }>;
+  }>;
 }) {
   const fileMap = new Map(
     input.allFiles.map((file) => [file.fileName, file] as const)
@@ -544,7 +551,9 @@ async function uploadPartitionedZips(input: {
       const matched = fileMap.get(file.fileName);
 
       if (!matched) {
-        throw new Error(`Export file missing from ZIP payload: ${file.fileName}`);
+        throw new Error(
+          `Export file missing from ZIP payload: ${file.fileName}`
+        );
       }
 
       return {
@@ -577,7 +586,9 @@ async function uploadPartitionedZips(input: {
     );
     const ratioKeys = upload.files
       .map((file) =>
-        input.printFiles.find((printFile) => printFile.fileName === file.fileName)
+        input.printFiles.find(
+          (printFile) => printFile.fileName === file.fileName
+        )
       )
       .filter((file): file is BuiltPrintFile => Boolean(file))
       .map((file) => file.ratioKey);
@@ -585,7 +596,10 @@ async function uploadPartitionedZips(input: {
     artifacts.push({
       artifactId: `artf_${randomUUID()}`,
       kind: "etsy_upload_zip",
-      fileName: sanitizeFilename(upload.uploadName, `wallpack-${index + 1}.zip`),
+      fileName: sanitizeFilename(
+        upload.uploadName,
+        `wallpack-${index + 1}.zip`
+      ),
       storagePath,
       contentType: "application/zip",
       bytes: zipBytes.byteLength,

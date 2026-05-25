@@ -35,6 +35,15 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /subscriptions/{subscriptionId} {
+      allow read: if ownsResource();
+      allow write: if false;
+    }
+
+    match /stripeWebhookEvents/{eventId} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

@@ -27,6 +27,13 @@ const PLAN_LABELS: Record<PlanKey, string> = {
   batch: "Batch"
 };
 
+export const PLAN_MONTHLY_CREDITS: Record<PlanKey, number> = {
+  free: 0,
+  starter: 80,
+  studio: 260,
+  batch: 900
+};
+
 export function normalizePlanKey(value: unknown): PlanKey {
   return PLAN_KEYS.includes(value as PlanKey) ? (value as PlanKey) : "free";
 }

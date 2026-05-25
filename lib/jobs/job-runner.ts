@@ -17,6 +17,7 @@ export type GenerationJobInput = {
   projectId: string;
   projectName?: string;
   previewCount: number;
+  creditCost?: number;
   promptInputs?: PromptInput;
   quality?: GenerationQuality;
 };

@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   assertFirestoreDocumentId,
+  creditLedgerEntryDocumentPath,
   generationJobDocumentPath,
   projectDocumentPath,
+  stripeWebhookEventDocumentPath,
+  subscriptionDocumentPath,
   userDocumentPath
 } from "@/lib/firestore/collections";
 import { firestoreGenerationJobFromDocument } from "@/lib/firestore/generation-jobs";
@@ -29,6 +32,13 @@ describe("Firestore persistence helpers", () => {
     expect(userDocumentPath("firebase-user-1")).toBe("users/firebase-user-1");
     expect(projectDocumentPath("prj_123")).toBe("projects/prj_123");
     expect(generationJobDocumentPath("gen_123")).toBe("generationJobs/gen_123");
+    expect(creditLedgerEntryDocumentPath("cle_123")).toBe(
+      "creditLedgerEntries/cle_123"
+    );
+    expect(subscriptionDocumentPath("sub_123")).toBe("subscriptions/sub_123");
+    expect(stripeWebhookEventDocumentPath("evt_123")).toBe(
+      "stripeWebhookEvents/evt_123"
+    );
   });
 
   it("rejects path-like document ids", () => {
@@ -81,11 +91,17 @@ describe("Firestore persistence helpers", () => {
       email: "seller@example.com",
       name: "Seller",
       signInProvider: "google.com",
-      emailVerified: true
+      emailVerified: true,
+      stripeCustomerId: "cus_123",
+      stripeSubscriptionId: "sub_123",
+      creditBalance: 42
     });
 
     expect(user.id).toBe("firebase-user-1");
     expect(user.planKey).toBe("free");
+    expect(user.stripeCustomerId).toBe("cus_123");
+    expect(user.stripeSubscriptionId).toBe("sub_123");
+    expect(user.creditBalance).toBe(42);
     expect(user.defaultAiDisclosure).toBe(true);
   });
 

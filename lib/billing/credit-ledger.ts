@@ -37,10 +37,16 @@ export class InMemoryCreditLedger {
   }
 
   grant(input: Omit<ApplyCreditInput, "amount" | "type"> & { amount: number }) {
-    return this.apply({ ...input, amount: Math.abs(input.amount), type: "grant" });
+    return this.apply({
+      ...input,
+      amount: Math.abs(input.amount),
+      type: "grant"
+    });
   }
 
-  reserve(input: Omit<ApplyCreditInput, "amount" | "type"> & { amount: number }) {
+  reserve(
+    input: Omit<ApplyCreditInput, "amount" | "type"> & { amount: number }
+  ) {
     return this.apply({
       ...input,
       amount: -Math.abs(input.amount),
@@ -52,8 +58,14 @@ export class InMemoryCreditLedger {
     return this.apply({ ...input, amount: 0, type: "commit" });
   }
 
-  refund(input: Omit<ApplyCreditInput, "amount" | "type"> & { amount: number }) {
-    return this.apply({ ...input, amount: Math.abs(input.amount), type: "refund" });
+  refund(
+    input: Omit<ApplyCreditInput, "amount" | "type"> & { amount: number }
+  ) {
+    return this.apply({
+      ...input,
+      amount: Math.abs(input.amount),
+      type: "refund"
+    });
   }
 
   apply(input: ApplyCreditInput) {
@@ -87,7 +99,7 @@ export class InMemoryCreditLedger {
   }
 }
 
-type ApplyCreditInput = {
+export type ApplyCreditInput = {
   userId: string;
   amount: number;
   type: CreditLedgerEntryType;
