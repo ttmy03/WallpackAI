@@ -115,3 +115,28 @@ env:
     availability:
       - BUILD
       - RUNTIME
+
+  - variable: STRIPE_SECRET_KEY
+    secret: STRIPE_SECRET_KEY
+    availability:
+      - RUNTIME
+
+  - variable: STRIPE_WEBHOOK_SECRET
+    secret: STRIPE_WEBHOOK_SECRET
+    availability:
+      - RUNTIME
+
+  - variable: STRIPE_PRICE_STARTER_ID
+    secret: STRIPE_PRICE_STARTER_ID
+    availability:
+      - RUNTIME
+
+  - variable: STRIPE_PRICE_STUDIO_ID
+    secret: STRIPE_PRICE_STUDIO_ID
+    availability:
+      - RUNTIME
+
+  - variable: STRIPE_PRICE_BATCH_ID
+    secret: STRIPE_PRICE_BATCH_ID
+    availability:
+      - RUNTIME

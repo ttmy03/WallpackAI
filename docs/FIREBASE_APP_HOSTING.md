@@ -64,7 +64,14 @@ RUNWARE_API_KEY
 FIREBASE_SERVICE_ACCOUNT_JSON
 STRIPE_SECRET_KEY
 STRIPE_WEBHOOK_SECRET
+STRIPE_PRICE_STARTER_ID
+STRIPE_PRICE_STUDIO_ID
+STRIPE_PRICE_BATCH_ID
 ```
+
+The Stripe price secret names must match the plan keys used by the app:
+`starter`, `studio`, and `batch`. Do not use legacy names such as
+`STRIPE_PRICE_PRO_ID`; the checkout route does not read them.
 
 ## Local Checks Before Rollout
 
