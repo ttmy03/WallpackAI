@@ -85,6 +85,15 @@ export function firestoreExportJobFromDocument(
   id: string,
   data: FirebaseFirestore.DocumentData
 ): ExportJobView {
+  const createdAt = stringOrFallback(data.createdAt, new Date(0).toISOString());
+  const updatedAt = stringOrFallback(
+    data.updatedAt,
+    stringOrFallback(
+      data.completedAt,
+      stringOrFallback(data.startedAt, createdAt)
+    )
+  );
+
   return {
     jobId: id,
     projectId: stringOrFallback(data.projectId, ""),
@@ -98,6 +107,7 @@ export function firestoreExportJobFromDocument(
     creditCost: numberOrFallback(data.creditCost, 0),
     creditReserved: data.creditReserved === true,
     creditCommitted: data.creditCommitted === true,
+    creditRefunded: data.creditRefunded === true,
     retryable: data.retryable === true,
     errorCode: nullableString(data.errorCode),
     errorMessage: nullableString(data.errorMessage),
@@ -106,7 +116,8 @@ export function firestoreExportJobFromDocument(
     warnings: stringArrayOrFallback(data.warnings),
     externalDeliveryNotRecommended:
       data.externalDeliveryNotRecommended === true,
-    createdAt: stringOrFallback(data.createdAt, new Date(0).toISOString()),
+    createdAt,
+    updatedAt,
     startedAt: nullableString(data.startedAt),
     completedAt: nullableString(data.completedAt)
   };

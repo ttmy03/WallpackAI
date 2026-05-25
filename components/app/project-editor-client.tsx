@@ -5,6 +5,7 @@ import {
   CreditCard,
   Download,
   Loader2,
+  RefreshCw,
   Sparkles,
   X,
   XCircle
@@ -259,6 +260,19 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     });
   }
 
+  async function retryExport(jobId: string) {
+    await runAction("export", "Export job queued.", async () => {
+      const result = await fetchAuthenticatedApi<ExportJobResponse>(
+        `/api/app/export-jobs/${jobId}/retry`,
+        {
+          method: "POST"
+        }
+      );
+      setActiveExportJobId(result.jobId);
+      await loadProject();
+    });
+  }
+
   async function deleteProject() {
     const confirmed = window.confirm(
       "Delete this project and its generated files? This cannot be undone."
@@ -459,7 +473,13 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
             </div>
           ) : null}
 
-          {latestExportJob ? <ExportJobPanel job={latestExportJob} /> : null}
+          {latestExportJob ? (
+            <ExportJobPanel
+              job={latestExportJob}
+              onRetry={retryExport}
+              retryDisabled={action.pending !== null}
+            />
+          ) : null}
         </section>
 
         <Card>
@@ -629,7 +649,15 @@ function ArtworkButton({
   );
 }
 
-function ExportJobPanel({ job }: { job: ExportJobView }) {
+function ExportJobPanel({
+  job,
+  onRetry,
+  retryDisabled
+}: {
+  job: ExportJobView;
+  onRetry: (jobId: string) => void;
+  retryDisabled: boolean;
+}) {
   const running = !TERMINAL_EXPORT_STATUSES.has(job.status);
 
   return (
@@ -653,9 +681,22 @@ function ExportJobPanel({ job }: { job: ExportJobView }) {
       ) : null}
 
       {job.errorMessage ? (
-        <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-destructive">
-          {job.errorMessage}
-        </p>
+        <div className="mt-3 grid gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2">
+          <p className="text-destructive">{job.errorMessage}</p>
+          {job.retryable ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-fit"
+              disabled={retryDisabled}
+              onClick={() => onRetry(job.jobId)}
+            >
+              <RefreshCw />
+              Retry export
+            </Button>
+          ) : null}
+        </div>
       ) : null}
 
       {job.warnings.length > 0 ? (

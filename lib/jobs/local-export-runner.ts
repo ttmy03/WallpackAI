@@ -53,6 +53,7 @@ type LocalExportJob = {
   creditCost: number;
   creditReserved: boolean;
   creditCommitted: boolean;
+  creditRefunded: boolean;
   retryable: boolean;
   errorCode: string | null;
   errorMessage: string | null;
@@ -61,6 +62,7 @@ type LocalExportJob = {
   warnings: string[];
   externalDeliveryNotRecommended: boolean;
   createdAt: Date;
+  updatedAt: Date;
   startedAt: Date | null;
   completedAt: Date | null;
 };
@@ -81,6 +83,7 @@ type GlobalWithLocalExportState = typeof globalThis & {
 };
 
 const EXPORT_CREDIT_COST = 5;
+const DEFAULT_EXPORT_JOB_TIMEOUT_MS = 15 * 60 * 1000;
 const TERMINAL_STATUSES = new Set<JobStatus>([
   "succeeded",
   "failed",
@@ -142,6 +145,7 @@ export async function enqueueLocalExportJob(input: EnqueueLocalExportInput) {
     creditCost: EXPORT_CREDIT_COST,
     creditReserved: false,
     creditCommitted: false,
+    creditRefunded: false,
     retryable: false,
     errorCode: null,
     errorMessage: null,
@@ -150,6 +154,7 @@ export async function enqueueLocalExportJob(input: EnqueueLocalExportInput) {
     warnings: [],
     externalDeliveryNotRecommended: false,
     createdAt: new Date(),
+    updatedAt: new Date(),
     startedAt: null,
     completedAt: null
   };
@@ -168,10 +173,23 @@ export async function getLocalExportJobForUser(jobId: string, userId: string) {
   const job = state.jobs.get(jobId);
 
   if (job?.userId === userId) {
+    await failTimedOutLocalExportJob(job, { now: new Date() });
+    await settleFailedLocalExportJobRefund(job);
     return toExportJobView(job);
   }
 
-  return getFirestoreExportJobForUser(jobId, userId);
+  const persistedJob = await getFirestoreExportJobForUser(jobId, userId);
+
+  if (!persistedJob) {
+    return null;
+  }
+
+  const settledJob = await settleFailedPersistedExportJobRefund(
+    persistedJob,
+    userId
+  );
+
+  return expireStalePersistedExportJob(settledJob, userId);
 }
 
 export async function retryLocalExportJob(jobId: string, userId: string) {
@@ -231,12 +249,15 @@ async function processLocalExportJob(jobId: string) {
     return;
   }
 
+  const timeout = scheduleLocalExportTimeout(job);
+
   job.status = "validating";
   job.stage = "credit_reservation";
   job.startedAt = new Date();
-  await persistExportJob(job);
 
   try {
+    await persistExportJob(job);
+
     await reserveLocalCredits({
       userId: job.userId,
       amount: job.creditCost,
@@ -245,6 +266,13 @@ async function processLocalExportJob(jobId: string) {
       relatedJobId: job.id
     });
     job.creditReserved = true;
+
+    if (isExportJobTerminal(job)) {
+      await refundExportJobCredits(job, "Etsy pack export failed");
+      await persistExportJob(job);
+      return;
+    }
+
     await persistExportJob(job);
 
     job.status = "running";
@@ -252,8 +280,19 @@ async function processLocalExportJob(jobId: string) {
     await persistExportJob(job);
 
     const project = await getRequiredProject(job);
+    if (isExportJobTerminal(job)) {
+      return;
+    }
+
     const artwork = await getRequiredArtwork(job);
+    if (isExportJobTerminal(job)) {
+      return;
+    }
+
     const source = await loadArtworkSource(artwork);
+    if (isExportJobTerminal(job)) {
+      return;
+    }
 
     job.stage = "preparing_print_files";
     await persistExportJob(job);
@@ -266,6 +305,10 @@ async function processLocalExportJob(jobId: string) {
       ratioKeys: job.requestedRatioKeys,
       upscaleProvider: getUpscaleProvider()
     });
+
+    if (isExportJobTerminal(job)) {
+      return;
+    }
 
     job.status = "processing";
     job.stage = "zip_packaging";
@@ -294,6 +337,10 @@ async function processLocalExportJob(jobId: string) {
       }
     );
 
+    if (isExportJobTerminal(job)) {
+      return;
+    }
+
     job.warnings = [...job.warnings, ...partition.warnings];
     job.externalDeliveryNotRecommended =
       partition.externalDeliveryNotRecommended;
@@ -301,7 +348,7 @@ async function processLocalExportJob(jobId: string) {
     job.stage = "storage_upload";
     await persistExportJob(job);
 
-    job.artifacts = await uploadPartitionedZips({
+    const artifacts = await uploadPartitionedZips({
       userId: job.userId,
       projectId: job.projectId,
       jobId: job.id,
@@ -309,6 +356,12 @@ async function processLocalExportJob(jobId: string) {
       printFiles: printResult.files,
       uploadPartitions: partition.uploads
     });
+
+    if (isExportJobTerminal(job)) {
+      return;
+    }
+
+    job.artifacts = artifacts;
     job.warnings = [...job.warnings, ...artifactSizeWarnings(job.artifacts)];
 
     await commitLocalCredits({
@@ -317,20 +370,19 @@ async function processLocalExportJob(jobId: string) {
       idempotencyKey: `${job.id}:commit`,
       relatedJobId: job.id
     });
+
+    if (isExportJobTerminal(job)) {
+      return;
+    }
+
     job.creditCommitted = true;
     job.status = "succeeded";
     job.stage = "complete";
     job.completedAt = new Date();
     await persistExportJob(job);
   } catch (error) {
-    if (job.creditReserved && !job.creditCommitted) {
-      await refundLocalCredits({
-        userId: job.userId,
-        amount: job.creditCost,
-        reason: "Etsy pack export failed",
-        idempotencyKey: `${job.id}:refund`,
-        relatedJobId: job.id
-      });
+    if (isExportJobTerminal(job)) {
+      return;
     }
 
     job.status = "failed";
@@ -343,8 +395,227 @@ async function processLocalExportJob(jobId: string) {
       error instanceof Error ? error.message : "Export failed unexpectedly.";
     job.retryable = !(error instanceof InsufficientCreditsError);
     job.completedAt = new Date();
-    await persistExportJob(job).catch(() => undefined);
+    try {
+      await refundExportJobCredits(job, "Etsy pack export failed");
+    } finally {
+      await persistExportJob(job).catch(() => undefined);
+    }
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+export function isStaleExportJobView(
+  job: Pick<
+    ExportJobView,
+    "createdAt" | "startedAt" | "status" | "updatedAt"
+  >,
+  options: { now?: Date; timeoutMs?: number } = {}
+) {
+  if (TERMINAL_STATUSES.has(job.status)) {
+    return false;
+  }
+
+  const lastActivityAt =
+    timestampFromIso(job.updatedAt) ??
+    timestampFromIso(job.startedAt) ??
+    timestampFromIso(job.createdAt);
+
+  if (lastActivityAt === null) {
+    return false;
+  }
+
+  const now = options.now ?? new Date();
+  const timeoutMs = options.timeoutMs ?? getExportJobTimeoutMs();
+
+  return now.getTime() - lastActivityAt >= timeoutMs;
+}
+
+async function expireStalePersistedExportJob(
+  job: ExportJobView,
+  userId: string
+) {
+  if (!isStaleExportJobView(job)) {
+    return job;
+  }
+
+  let timedOutJob = timedOutExportJobView(job, new Date());
+
+  if (
+    timedOutJob.creditReserved &&
+    !timedOutJob.creditCommitted &&
+    !timedOutJob.creditRefunded
+  ) {
+    await refundLocalCredits({
+      userId,
+      amount: timedOutJob.creditCost,
+      reason: "Etsy pack export timed out",
+      idempotencyKey: `${timedOutJob.jobId}:refund`,
+      relatedJobId: timedOutJob.jobId
+    });
+    timedOutJob = {
+      ...timedOutJob,
+      creditRefunded: true
+    };
+  }
+
+  await saveFirestoreExportJob(timedOutJob, { userId });
+
+  return timedOutJob;
+}
+
+function scheduleLocalExportTimeout(job: LocalExportJob) {
+  const timeout = setTimeout(() => {
+    void failTimedOutLocalExportJob(job, {
+      force: true,
+      now: new Date()
+    }).catch(() => undefined);
+  }, getExportJobTimeoutMs());
+
+  if (typeof timeout === "object" && "unref" in timeout) {
+    timeout.unref();
+  }
+
+  return timeout;
+}
+
+async function failTimedOutLocalExportJob(
+  job: LocalExportJob,
+  options: { force?: boolean; now: Date }
+) {
+  if (isExportJobTerminal(job)) {
+    return false;
+  }
+
+  if (!options.force && !isStaleLocalExportJob(job, options.now)) {
+    return false;
+  }
+
+  job.status = "failed";
+  job.stage = "timed_out";
+  job.errorCode = "EXPORT_TIMEOUT";
+  job.errorMessage =
+    "Export job timed out before it finished. Any reserved credits were refunded. Please retry the Etsy pack export.";
+  job.retryable = true;
+  job.completedAt = options.now;
+  try {
+    await refundExportJobCredits(job, "Etsy pack export timed out");
+  } finally {
+    await persistExportJob(job);
+  }
+
+  return true;
+}
+
+async function refundExportJobCredits(job: LocalExportJob, reason: string) {
+  if (!job.creditReserved || job.creditCommitted || job.creditRefunded) {
+    return;
+  }
+
+  await refundLocalCredits({
+    userId: job.userId,
+    amount: job.creditCost,
+    reason,
+    idempotencyKey: `${job.id}:refund`,
+    relatedJobId: job.id
+  });
+  job.creditRefunded = true;
+}
+
+async function settleFailedLocalExportJobRefund(job: LocalExportJob) {
+  if (!shouldRefundFailedExportJob(job)) {
+    return;
+  }
+
+  await refundExportJobCredits(job, "Etsy pack export failed");
+  await persistExportJob(job);
+}
+
+async function settleFailedPersistedExportJobRefund(
+  job: ExportJobView,
+  userId: string
+) {
+  if (!shouldRefundFailedExportJob(job)) {
+    return job;
+  }
+
+  const settledJob = {
+    ...job,
+    creditRefunded: true,
+    updatedAt: new Date().toISOString()
+  };
+
+  await refundLocalCredits({
+    userId,
+    amount: job.creditCost,
+    reason: "Etsy pack export failed",
+    idempotencyKey: `${job.jobId}:refund`,
+    relatedJobId: job.jobId
+  });
+  await saveFirestoreExportJob(settledJob, { userId });
+
+  return settledJob;
+}
+
+function shouldRefundFailedExportJob(
+  job: Pick<
+    ExportJobView,
+    "creditCommitted" | "creditRefunded" | "creditReserved" | "status"
+  >
+) {
+  return (
+    job.status === "failed" &&
+    job.creditReserved &&
+    !job.creditCommitted &&
+    !job.creditRefunded
+  );
+}
+
+function timedOutExportJobView(job: ExportJobView, now: Date): ExportJobView {
+  const timestamp = now.toISOString();
+
+  return {
+    ...job,
+    status: "failed",
+    stage: "timed_out",
+    retryable: true,
+    errorCode: "EXPORT_TIMEOUT",
+    errorMessage:
+      "Export job timed out before it finished. Any reserved credits were refunded. Please retry the Etsy pack export.",
+    updatedAt: timestamp,
+    completedAt: timestamp
+  };
+}
+
+function isStaleLocalExportJob(job: LocalExportJob, now: Date) {
+  return isStaleExportJobView(toExportJobView(job), { now });
+}
+
+function isExportJobTerminal(job: { status: JobStatus }) {
+  return TERMINAL_STATUSES.has(job.status);
+}
+
+function timestampFromIso(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = new Date(value).getTime();
+
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function getExportJobTimeoutMs() {
+  return readPositiveIntegerEnv(
+    "EXPORT_JOB_TIMEOUT_MS",
+    DEFAULT_EXPORT_JOB_TIMEOUT_MS
+  );
+}
+
+function readPositiveIntegerEnv(name: string, fallback: number) {
+  const value = Number(process.env[name]);
+
+  return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 async function getRequiredProject(job: LocalExportJob) {
@@ -625,6 +896,7 @@ function toExportJobView(job: LocalExportJob): ExportJobView {
     creditCost: job.creditCost,
     creditReserved: job.creditReserved,
     creditCommitted: job.creditCommitted,
+    creditRefunded: job.creditRefunded,
     retryable: job.retryable,
     errorCode: job.errorCode,
     errorMessage: job.errorMessage,
@@ -633,6 +905,7 @@ function toExportJobView(job: LocalExportJob): ExportJobView {
     warnings: job.warnings,
     externalDeliveryNotRecommended: job.externalDeliveryNotRecommended,
     createdAt: job.createdAt.toISOString(),
+    updatedAt: job.updatedAt.toISOString(),
     startedAt: job.startedAt?.toISOString() ?? null,
     completedAt: job.completedAt?.toISOString() ?? null
   };
@@ -653,6 +926,7 @@ function artifactSizeWarnings(artifacts: ExportArtifactView[]) {
 }
 
 async function persistExportJob(job: LocalExportJob) {
+  job.updatedAt = new Date();
   await saveFirestoreExportJob(toExportJobView(job), {
     userId: job.userId
   });

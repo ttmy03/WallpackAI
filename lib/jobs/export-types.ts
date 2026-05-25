@@ -37,6 +37,7 @@ export type ExportJobView = {
   creditCost: number;
   creditReserved: boolean;
   creditCommitted: boolean;
+  creditRefunded: boolean;
   retryable: boolean;
   errorCode: string | null;
   errorMessage: string | null;
@@ -45,6 +46,7 @@ export type ExportJobView = {
   warnings: string[];
   externalDeliveryNotRecommended: boolean;
   createdAt: string;
+  updatedAt: string;
   startedAt: string | null;
   completedAt: string | null;
 };

@@ -9,6 +9,7 @@ import {
   subscriptionDocumentPath,
   userDocumentPath
 } from "@/lib/firestore/collections";
+import { firestoreExportJobFromDocument } from "@/lib/firestore/export-jobs";
 import { firestoreGenerationJobFromDocument } from "@/lib/firestore/generation-jobs";
 import { firestoreProjectFromDocument } from "@/lib/firestore/projects";
 import { firestoreUserFromDocument } from "@/lib/firestore/users";
@@ -84,6 +85,25 @@ describe("Firestore persistence helpers", () => {
     expect(job.jobId).toBe("gen_123");
     expect(job.status).toBe("succeeded");
     expect(job.artworks).toEqual([]);
+  });
+
+  it("maps Firestore export jobs with heartbeat fallbacks", () => {
+    const job = firestoreExportJobFromDocument("exp_123", {
+      projectId: "prj_123",
+      projectName: "Mountain calm set",
+      artworkId: "art_123",
+      status: "running",
+      requestedRatioKeys: ["2x3"],
+      creditCost: 5,
+      creditReserved: true,
+      createdAt: "2026-05-24T19:00:00.000Z",
+      startedAt: "2026-05-24T19:01:00.000Z"
+    });
+
+    expect(job.jobId).toBe("exp_123");
+    expect(job.status).toBe("running");
+    expect(job.updatedAt).toBe("2026-05-24T19:01:00.000Z");
+    expect(job.creditRefunded).toBe(false);
   });
 
   it("maps Firestore user settings with AI disclosure enabled by default", () => {
