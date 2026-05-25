@@ -318,7 +318,7 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
-            variant="destructive"
+            variant="outline"
             disabled={action.pending !== null}
             onClick={() => void deleteProject()}
             title="Delete this project and return to the project list."
@@ -406,7 +406,6 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
                   unoptimized
                   className="object-cover"
                 />
-                <div className="absolute left-1/2 top-1/2 size-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-primary shadow-lg" />
                 <div className="absolute bottom-4 left-4 rounded-md bg-black/50 px-3 py-2 text-sm text-white backdrop-blur">
                   {selectedRatioPreset.label} · {selectedRatioPixels.width} x{" "}
                   {selectedRatioPixels.height} px
@@ -535,14 +534,7 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
                   ))}
                 </div>
               </div>
-            ) : (
-              <div className="rounded-md border border-accent/40 bg-accent/10 p-4 text-sm">
-                <div className="flex gap-2">
-                  <XCircle className="mt-0.5 size-4 shrink-0 text-accent" />
-                  <p>Create an Etsy pack to calculate real file sizes.</p>
-                </div>
-              </div>
-            )}
+            ) : null}
           </CardContent>
         </Card>
       </div>
