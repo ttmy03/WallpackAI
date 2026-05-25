@@ -499,38 +499,63 @@ async function generateArtworkRatioSources(input: {
 }): Promise<GeneratedArtworkRatioSource[][]> {
   const imageProvider = getImageProvider();
   const ratioKeys = automaticRatioKeysForPrimaryRatio(input.primaryRatio);
-  const artworkSources: GeneratedArtworkRatioSource[][] = [];
+  const primaryRatioKey = primaryRatioKeyForRatioSet(
+    input.primaryRatio,
+    ratioKeys
+  );
+  const primaryImages = await imageProvider.generate({
+    prompt: promptForPrimaryRatio(input.prompt, primaryRatioKey),
+    negativePrompt: input.negativePrompt,
+    count: input.count,
+    aspectRatio: primaryRatioKey
+  });
 
-  for (let index = 0; index < input.count; index += 1) {
-    const ratioSources = await Promise.all(
-      ratioKeys.map((ratioKey) =>
-        generateSingleRatioSource(imageProvider, {
-          prompt: input.prompt,
-          negativePrompt: input.negativePrompt,
-          ratioKey
-        })
-      )
+  if (primaryImages.length < input.count) {
+    throw new Error(
+      `Image provider returned ${primaryImages.length} of ${input.count} requested artwork variants.`
     );
-
-    artworkSources.push(ratioSources);
   }
 
-  return artworkSources;
+  return Promise.all(
+    primaryImages.slice(0, input.count).map(async (primaryImage) => {
+      const ratioSources = await Promise.all(
+        ratioKeys.map((ratioKey) => {
+          if (ratioKey === primaryRatioKey) {
+            return Promise.resolve({
+              ratioKey,
+              image: primaryImage
+            });
+          }
+
+          return generateReferencedRatioSource(imageProvider, {
+            prompt: input.prompt,
+            negativePrompt: input.negativePrompt,
+            ratioKey,
+            referenceImage: primaryImage
+          });
+        })
+      );
+
+      return ratioSources;
+    })
+  );
 }
 
-async function generateSingleRatioSource(
+async function generateReferencedRatioSource(
   imageProvider: ImageProvider,
   input: {
     prompt: string;
     negativePrompt: string;
     ratioKey: PrintRatioPresetKey;
+    referenceImage: GeneratedImage;
   }
 ): Promise<GeneratedArtworkRatioSource> {
   const [image] = await imageProvider.generate({
-    prompt: promptForGeneratedRatio(input.prompt, input.ratioKey),
+    prompt: promptForReferencedRatio(input.prompt, input.ratioKey),
     negativePrompt: input.negativePrompt,
     count: 1,
-    aspectRatio: input.ratioKey
+    aspectRatio: input.ratioKey,
+    referenceImages: [generatedImageToDataUri(input.referenceImage)]
   });
 
   if (!image) {
@@ -543,7 +568,26 @@ async function generateSingleRatioSource(
   };
 }
 
-function promptForGeneratedRatio(
+function primaryRatioKeyForRatioSet(
+  primaryRatio: string,
+  ratioKeys: PrintRatioPresetKey[]
+) {
+  return isPrintRatioPresetKey(primaryRatio) && ratioKeys.includes(primaryRatio)
+    ? primaryRatio
+    : ratioKeys[0];
+}
+
+function promptForPrimaryRatio(prompt: string, ratioKey: PrintRatioPresetKey) {
+  const ratio = getPrintRatioPreset(ratioKey);
+
+  return [
+    prompt,
+    "",
+    `Create the master artwork for this Etsy pack in ${ratio.label}. The other included ratios will use this image as the visual reference.`
+  ].join("\n");
+}
+
+function promptForReferencedRatio(
   prompt: string,
   ratioKey: PrintRatioPresetKey
 ) {
@@ -552,9 +596,16 @@ function promptForGeneratedRatio(
   return [
     prompt,
     "",
-    `Generate this specific Etsy pack ratio as its own complete source artwork: ${ratio.label}.`,
-    "Do not create a cropped mockup of another ratio; compose the artwork natively for this canvas."
+    `Create the same artwork as the reference image in ${ratio.label}.`,
+    "Preserve the same subject, style, palette, lighting, texture, visual identity, and overall composition from the reference image.",
+    "Only extend or reframe the canvas as needed for the new print ratio. Do not introduce a new artwork variant."
   ].join("\n");
+}
+
+function generatedImageToDataUri(image: GeneratedImage) {
+  return `data:${image.mimeType};base64,${Buffer.from(image.bytes).toString(
+    "base64"
+  )}`;
 }
 
 function shouldUseInMemoryCreditLedger() {

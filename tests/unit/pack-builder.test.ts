@@ -111,4 +111,26 @@ describe("print pack builder", () => {
       targetHeight: 7200
     });
   }, 20_000);
+
+  it("reports each built print file for export job progress", async () => {
+    const [source] = await new MockImageProvider().generate({
+      prompt: "minimalist mountain landscape",
+      count: 1,
+      aspectRatio: "2x3"
+    });
+    const builtRatioKeys: string[] = [];
+
+    await buildPrintFiles({
+      sourceBytes: Buffer.from(source.bytes),
+      sourceMimeType: source.mimeType,
+      sourceWidth: source.width,
+      sourceHeight: source.height,
+      ratioKeys: ["2x3", "3x4"],
+      onFileBuilt: (file) => {
+        builtRatioKeys.push(file.ratioKey);
+      }
+    });
+
+    expect(builtRatioKeys).toEqual(["2x3", "3x4"]);
+  }, 20_000);
 });

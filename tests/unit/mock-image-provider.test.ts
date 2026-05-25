@@ -33,4 +33,17 @@ describe("Mock image provider", () => {
     expect(image.height).toBe(864);
     expect(image.width).toBeGreaterThan(image.height);
   });
+
+  it("marks reference-guided mock generations", async () => {
+    const provider = new MockImageProvider();
+    const [image] = await provider.generate({
+      prompt: "same artwork in 3:4",
+      count: 1,
+      aspectRatio: "3x4",
+      referenceImages: ["data:image/png;base64,abc123"]
+    });
+
+    expect(image.providerRequestId).toBe("mock-reference-image-1");
+    expect(image.usage?.referenceImageCount).toBe(1);
+  });
 });

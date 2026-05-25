@@ -67,6 +67,7 @@ export async function buildPrintFiles(input: {
   ratioKeys: PrintRatioPresetKey[];
   ratioSources?: Partial<Record<PrintRatioPresetKey, PrintSourceImage>>;
   upscaleProvider?: UpscaleProvider | null;
+  onFileBuilt?: (file: BuiltPrintFile) => Promise<void> | void;
 }): Promise<BuildPrintFilesResult> {
   const warnings: string[] = [];
   const files: BuiltPrintFile[] = [];
@@ -109,7 +110,7 @@ export async function buildPrintFiles(input: {
       );
     }
 
-    files.push({
+    const file: BuiltPrintFile = {
       fileName: preset.fileName,
       bytes: rendered.bytes,
       contentType: "image/jpeg",
@@ -125,7 +126,10 @@ export async function buildPrintFiles(input: {
       resizeFactor:
         Math.max(pixels.width, pixels.height) /
         Math.max(source.width, source.height)
-    });
+    };
+
+    files.push(file);
+    await input.onFileBuilt?.(file);
   }
 
   return {
@@ -285,6 +289,11 @@ async function renderJpegWithinTarget(
 ) {
   let best: { bytes: Buffer; quality: number } | null = null;
   const frame = fitImageWithinCanvas(sourcePixels, targetPixels);
+
+  if (fillsTargetCanvas(frame, targetPixels)) {
+    return renderDirectJpegResize(sourceBytes, targetPixels);
+  }
+
   const foreground = await sharp(sourceBytes)
     .rotate()
     .resize({
@@ -316,6 +325,57 @@ async function renderJpegWithinTarget(
   for (const quality of JPEG_QUALITY_STEPS) {
     const bytes = await sharp(background)
       .composite([{ input: foreground, left: frame.left, top: frame.top }])
+      .jpeg({
+        quality,
+        progressive: true,
+        mozjpeg: true
+      })
+      .toBuffer();
+
+    best = { bytes, quality };
+
+    if (bytes.byteLength <= TARGET_PRINT_FILE_BYTES) {
+      break;
+    }
+  }
+
+  if (!best) {
+    throw new Error("Print file could not be rendered.");
+  }
+
+  return best;
+}
+
+function fillsTargetCanvas(
+  frame: { width: number; height: number; left: number; top: number },
+  targetPixels: { width: number; height: number }
+) {
+  return (
+    frame.left === 0 &&
+    frame.top === 0 &&
+    frame.width === targetPixels.width &&
+    frame.height === targetPixels.height
+  );
+}
+
+async function renderDirectJpegResize(
+  sourceBytes: Buffer,
+  targetPixels: { width: number; height: number }
+) {
+  let best: { bytes: Buffer; quality: number } | null = null;
+
+  for (const quality of JPEG_QUALITY_STEPS) {
+    const bytes = await sharp(sourceBytes)
+      .rotate()
+      .resize({
+        width: targetPixels.width,
+        height: targetPixels.height,
+        fit: "fill",
+        kernel: sharp.kernel.lanczos3,
+        withoutEnlargement: false
+      })
+      .flatten({ background: PRINT_FILE_BACKGROUND })
+      .toColorspace("srgb")
       .jpeg({
         quality,
         progressive: true,

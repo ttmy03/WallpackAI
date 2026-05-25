@@ -5,6 +5,7 @@ export type GenerateImageInput = {
   aspectRatio?: string;
   width?: number;
   height?: number;
+  referenceImages?: string[];
 };
 
 export type GeneratedImage = {

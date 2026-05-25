@@ -18,9 +18,12 @@ export class MockImageProvider implements ImageProvider {
       mimeType: "image/png" as const,
       width: dimensions.width,
       height: dimensions.height,
-      providerRequestId: `mock-image-${index + 1}`,
+      providerRequestId: input.referenceImages?.length
+        ? `mock-reference-image-${index + 1}`
+        : `mock-image-${index + 1}`,
       usage: {
         model: "mock",
+        referenceImageCount: input.referenceImages?.length ?? 0,
         cost: 0
       }
     }));
@@ -85,10 +88,7 @@ function createMockWallArtPng(input: {
       const wave =
         Math.sin((nx * 5.5 + seed * 0.0002) * Math.PI) * 0.14 +
         Math.cos((ny * 4.3 + seed * 0.0001) * Math.PI) * 0.11;
-      const vignette = Math.max(
-        0,
-        1 - Math.hypot(nx - 0.5, ny - 0.48) * 1.65
-      );
+      const vignette = Math.max(0, 1 - Math.hypot(nx - 0.5, ny - 0.48) * 1.65);
       const mountain =
         ny > 0.5 + Math.sin(nx * Math.PI * 2.2 + seed) * 0.05 ? 0.22 : 0;
       const accent =

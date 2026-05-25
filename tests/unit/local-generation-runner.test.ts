@@ -52,14 +52,40 @@ describe("local generation runner", () => {
       job.artworks[0]?.dimensionPreviews?.map((preview) => ({
         ratioKey: preview.ratioKey,
         sourceWidth: preview.sourceWidth,
-        sourceHeight: preview.sourceHeight
+        sourceHeight: preview.sourceHeight,
+        sourceProviderRequestId: preview.sourceProviderRequestId
       }))
     ).toEqual([
-      { ratioKey: "2x3", sourceWidth: 864, sourceHeight: 1296 },
-      { ratioKey: "3x4", sourceWidth: 900, sourceHeight: 1200 },
-      { ratioKey: "4x5", sourceWidth: 960, sourceHeight: 1200 },
-      { ratioKey: "5x7", sourceWidth: 900, sourceHeight: 1260 },
-      { ratioKey: "11x14", sourceWidth: 990, sourceHeight: 1260 }
+      {
+        ratioKey: "2x3",
+        sourceWidth: 864,
+        sourceHeight: 1296,
+        sourceProviderRequestId: "mock-image-1"
+      },
+      {
+        ratioKey: "3x4",
+        sourceWidth: 900,
+        sourceHeight: 1200,
+        sourceProviderRequestId: "mock-reference-image-1"
+      },
+      {
+        ratioKey: "4x5",
+        sourceWidth: 960,
+        sourceHeight: 1200,
+        sourceProviderRequestId: "mock-reference-image-1"
+      },
+      {
+        ratioKey: "5x7",
+        sourceWidth: 900,
+        sourceHeight: 1260,
+        sourceProviderRequestId: "mock-reference-image-1"
+      },
+      {
+        ratioKey: "11x14",
+        sourceWidth: 990,
+        sourceHeight: 1260,
+        sourceProviderRequestId: "mock-reference-image-1"
+      }
     ]);
     expect(
       job.artworks[0]?.dimensionPreviews?.every((preview) =>
@@ -106,7 +132,8 @@ describe("local generation runner", () => {
     expect(job.artworks[0]?.dimensionPreviews?.[1]).toMatchObject({
       ratioKey: "4x3",
       sourceWidth: 1200,
-      sourceHeight: 900
+      sourceHeight: 900,
+      sourceProviderRequestId: "mock-reference-image-1"
     });
   }, 20_000);
 

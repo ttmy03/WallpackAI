@@ -156,12 +156,19 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     };
   }, [projectId]);
 
+  const latestExportJobId = detail?.latestExportJob?.jobId ?? null;
+  const latestExportJobStatus = detail?.latestExportJob?.status ?? null;
+  const latestGenerationJobId = detail?.latestGenerationJob?.jobId ?? null;
+  const latestGenerationJobStatus =
+    detail?.latestGenerationJob?.status ?? null;
+
   useEffect(() => {
     const jobId =
       activeExportJobId ??
-      (detail?.latestExportJob &&
-      !TERMINAL_EXPORT_STATUSES.has(detail.latestExportJob.status)
-        ? detail.latestExportJob.jobId
+      (latestExportJobId &&
+      latestExportJobStatus &&
+      !TERMINAL_EXPORT_STATUSES.has(latestExportJobStatus)
+        ? latestExportJobId
         : null);
 
     if (!jobId) {
@@ -209,14 +216,20 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [activeExportJobId, detail?.latestExportJob, loadProject]);
+  }, [
+    activeExportJobId,
+    latestExportJobId,
+    latestExportJobStatus,
+    loadProject
+  ]);
 
   useEffect(() => {
     const jobId =
       activeGenerationJobId ??
-      (detail?.latestGenerationJob &&
-      !TERMINAL_GENERATION_STATUSES.has(detail.latestGenerationJob.status)
-        ? detail.latestGenerationJob.jobId
+      (latestGenerationJobId &&
+      latestGenerationJobStatus &&
+      !TERMINAL_GENERATION_STATUSES.has(latestGenerationJobStatus)
+        ? latestGenerationJobId
         : null);
 
     if (!jobId) {
@@ -268,7 +281,12 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [activeGenerationJobId, detail?.latestGenerationJob, loadProject]);
+  }, [
+    activeGenerationJobId,
+    latestGenerationJobId,
+    latestGenerationJobStatus,
+    loadProject
+  ]);
 
   const selectedArtwork = useMemo(
     () =>

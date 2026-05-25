@@ -20,6 +20,7 @@ type RunwareImageTask = {
   taskUUID: string;
   model: string;
   positivePrompt: string;
+  referenceImages?: string[];
   width: number;
   height: number;
   numberResults: number;
@@ -253,12 +254,14 @@ export function buildRunwareImageTask(
 ): RunwareImageTask {
   const dimensions = resolveRunwareDimensions(input);
   const numberResults = clampInteger(input.count, 1, 20);
+  const referenceImages = sanitizeReferenceImages(input.referenceImages);
 
   return {
     taskType: "imageInference",
     taskUUID: options.taskUUID ?? randomUUID(),
     model: options.airId ?? RUNWARE_GPT_IMAGE_AIR_ID,
     positivePrompt: input.prompt,
+    ...(referenceImages.length > 0 ? { referenceImages } : {}),
     width: dimensions.width,
     height: dimensions.height,
     numberResults,
@@ -268,6 +271,17 @@ export function buildRunwareImageTask(
     includeCost: true,
     safety: "fast"
   };
+}
+
+function sanitizeReferenceImages(referenceImages: string[] | undefined) {
+  if (!referenceImages?.length) {
+    return [];
+  }
+
+  return referenceImages
+    .map((image) => image.trim())
+    .filter((image) => image.length > 0)
+    .slice(0, 16);
 }
 
 export function buildRunwareUpscaleTask(

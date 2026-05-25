@@ -35,6 +35,30 @@ describe("Runware image provider", () => {
     expect(task.positivePrompt).not.toContain("mockup");
   });
 
+  it("passes reference images through for GPT Image 2 image-to-image tasks", () => {
+    const task = buildRunwareImageTask(
+      {
+        prompt: "create the same printable art in 3:4",
+        count: 1,
+        aspectRatio: "3x4",
+        referenceImages: [
+          " data:image/jpeg;base64,abc123 ",
+          "",
+          "https://example.test/source.jpg"
+        ]
+      },
+      { taskUUID: "00000000-0000-4000-8000-000000000010" }
+    );
+
+    expect(task.model).toBe(RUNWARE_GPT_IMAGE_AIR_ID);
+    expect(task.referenceImages).toEqual([
+      "data:image/jpeg;base64,abc123",
+      "https://example.test/source.jpg"
+    ]);
+    expect(task.width).toBe(1728);
+    expect(task.height).toBe(2304);
+  });
+
   it("maps common Etsy ratios to Runware-compatible dimensions", () => {
     expect(resolveRunwareDimensions({ aspectRatio: "3x4" })).toEqual({
       width: 1728,

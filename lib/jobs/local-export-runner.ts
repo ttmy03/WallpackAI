@@ -306,7 +306,16 @@ async function processLocalExportJob(jobId: string) {
       sourceHeight: artwork.height,
       ratioKeys: job.requestedRatioKeys,
       ratioSources,
-      upscaleProvider: getUpscaleProvider()
+      upscaleProvider: getUpscaleProvider(),
+      onFileBuilt: async (file) => {
+        if (isExportJobTerminal(job)) {
+          return;
+        }
+
+        job.stage = `print_file_${file.ratioKey}`;
+        job.files = [...job.files, printFileToView(file)];
+        await persistExportJob(job);
+      }
     });
 
     if (isExportJobTerminal(job)) {
