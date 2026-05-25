@@ -414,9 +414,17 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
           {selectedArtwork && selectedArtworkSrc ? (
             <figure>
               <div
-                className="relative mx-auto w-full overflow-hidden rounded-md border bg-white"
+                className="relative mx-auto w-full overflow-hidden rounded-md bg-secondary"
                 style={selectedPreviewFrameStyle}
               >
+                <Image
+                  src={selectedArtworkSrc}
+                  alt=""
+                  fill
+                  unoptimized
+                  aria-hidden="true"
+                  className="scale-110 object-cover opacity-70 blur-2xl"
+                />
                 <Image
                   src={selectedArtworkSrc}
                   alt="Selected generated wall-art preview"

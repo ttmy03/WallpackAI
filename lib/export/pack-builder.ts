@@ -12,6 +12,7 @@ import {
 const JPEG_QUALITY_STEPS = [90, 86, 82, 78, 74] as const;
 const TARGET_PRINT_FILE_BYTES = 18 * 1024 * 1024;
 const PRINT_FILE_BACKGROUND = "#ffffff";
+const BLURRED_BACKGROUND_SIGMA = 36;
 
 export type BuiltExportFile = {
   fileName: string;
@@ -162,7 +163,7 @@ async function renderJpegWithinTarget(
 ) {
   let best: { bytes: Buffer; quality: number } | null = null;
   const frame = fitImageWithinCanvas(sourcePixels, targetPixels);
-  const fittedSource = await sharp(sourceBytes)
+  const foreground = await sharp(sourceBytes)
     .rotate()
     .resize({
       width: frame.width,
@@ -174,17 +175,25 @@ async function renderJpegWithinTarget(
     .flatten({ background: PRINT_FILE_BACKGROUND })
     .toColorspace("srgb")
     .toBuffer();
+  const background = await sharp(sourceBytes)
+    .rotate()
+    .resize({
+      width: targetPixels.width,
+      height: targetPixels.height,
+      fit: "cover",
+      position: "center",
+      kernel: sharp.kernel.lanczos3,
+      withoutEnlargement: false
+    })
+    .flatten({ background: PRINT_FILE_BACKGROUND })
+    .blur(BLURRED_BACKGROUND_SIGMA)
+    .modulate({ brightness: 1.04, saturation: 1.08 })
+    .toColorspace("srgb")
+    .toBuffer();
 
   for (const quality of JPEG_QUALITY_STEPS) {
-    const bytes = await sharp({
-      create: {
-        width: targetPixels.width,
-        height: targetPixels.height,
-        channels: 3,
-        background: PRINT_FILE_BACKGROUND
-      }
-    })
-      .composite([{ input: fittedSource, left: frame.left, top: frame.top }])
+    const bytes = await sharp(background)
+      .composite([{ input: foreground, left: frame.left, top: frame.top }])
       .jpeg({
         quality,
         progressive: true,
