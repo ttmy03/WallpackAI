@@ -41,9 +41,21 @@ describe("print math", () => {
     ]);
   });
 
-  it("uses one automatic generation ratio per project orientation", () => {
-    expect(getAutomaticPrintRatioKeys("portrait")).toEqual(["2x3"]);
-    expect(getAutomaticPrintRatioKeys("landscape")).toEqual(["3x2"]);
+  it("uses automatic five-ratio Etsy packs per project orientation", () => {
+    expect(getAutomaticPrintRatioKeys("portrait")).toEqual([
+      "2x3",
+      "3x4",
+      "4x5",
+      "5x7",
+      "11x14"
+    ]);
+    expect(getAutomaticPrintRatioKeys("landscape")).toEqual([
+      "3x2",
+      "4x3",
+      "5x4",
+      "7x5",
+      "14x11"
+    ]);
   });
 
   it("calculates effective DPI from real pixels", () => {

@@ -11,7 +11,9 @@ export class MockUpscaleProvider implements UpscaleProvider {
       providerRequestId: "mock-upscale",
       usage: {
         model: "mock-upscale",
-        cost: 0
+        cost: 0,
+        targetWidth: input.targetWidth,
+        targetHeight: input.targetHeight
       }
     };
   }

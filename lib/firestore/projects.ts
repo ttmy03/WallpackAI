@@ -106,7 +106,10 @@ export async function deleteFirestoreProjectForUser(input: {
   userId: string;
   projectId: string;
 }) {
-  const project = await getFirestoreProjectForUser(input.userId, input.projectId);
+  const project = await getFirestoreProjectForUser(
+    input.userId,
+    input.projectId
+  );
 
   if (!project) {
     return false;
@@ -132,18 +135,28 @@ export async function deleteFirestoreProjectForUser(input: {
     generationJobs.docs,
     input.projectId
   );
-  const exportJobDocs = filterProjectDocuments(exportJobs.docs, input.projectId);
+  const exportJobDocs = filterProjectDocuments(
+    exportJobs.docs,
+    input.projectId
+  );
   const storagePaths = [
     ...artworkDocs.flatMap((doc) => [
       nullableString(doc.data().sourceStoragePath),
-      nullableString(doc.data().previewStoragePath)
+      nullableString(doc.data().previewStoragePath),
+      ...artworkDimensionPreviewStoragePaths(doc.data().dimensionPreviews)
     ]),
-    ...exportJobDocs.flatMap((doc) => artifactStoragePaths(doc.data().artifacts))
-  ].filter((path): path is string => typeof path === "string" && path.length > 0);
+    ...exportJobDocs.flatMap((doc) =>
+      artifactStoragePaths(doc.data().artifacts)
+    )
+  ].filter(
+    (path): path is string => typeof path === "string" && path.length > 0
+  );
 
   await Promise.all(
     [...new Set(storagePaths)].map((path) =>
-      getStorageProvider().deleteObject(path).catch(() => undefined)
+      getStorageProvider()
+        .deleteObject(path)
+        .catch(() => undefined)
     )
   );
 
@@ -188,7 +201,29 @@ export async function markFirestoreProjectGenerated(input: {
   userId: string;
   status: "ready" | "failed";
 }) {
-  await markFirestoreProjectStatus(input);
+  const project = await getFirestoreProjectForUser(
+    input.userId,
+    input.projectId
+  );
+
+  if (!project) {
+    return;
+  }
+
+  const update: Partial<FirestoreProject> = {
+    status: input.status,
+    updatedAt: new Date().toISOString()
+  };
+
+  if (input.status === "ready") {
+    update.printRatioKeys = getAutomaticPrintRatioKeys(
+      getPrintRatioOrientation(projectPrimaryRatioOrFallback(project))
+    );
+  }
+
+  await getFirebaseFirestore()
+    .doc(projectDocumentPath(input.projectId))
+    .set(update, { merge: true });
 }
 
 export async function markFirestoreProjectStatus(input: {
@@ -271,6 +306,23 @@ function artifactStoragePaths(value: unknown) {
     .filter((path): path is string => typeof path === "string");
 }
 
+function artworkDimensionPreviewStoragePaths(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((preview) =>
+      typeof preview === "object" &&
+      preview !== null &&
+      typeof (preview as { previewStoragePath?: unknown })
+        .previewStoragePath === "string"
+        ? (preview as { previewStoragePath: string }).previewStoragePath
+        : null
+    )
+    .filter((path): path is string => typeof path === "string");
+}
+
 function projectStatusOrFallback(value: unknown): FirestoreProject["status"] {
   if (
     value === "draft" ||
@@ -300,6 +352,12 @@ function printRatioKeysOrFallback(
     const ratioKeys = value.filter(isPrintRatioPresetKey).slice(0, 5);
 
     if (ratioKeys.length > 0) {
+      if (ratioKeys.length === 1) {
+        return getAutomaticPrintRatioKeys(
+          getPrintRatioOrientation(ratioKeys[0])
+        );
+      }
+
       return ratioKeys;
     }
   }
@@ -309,6 +367,12 @@ function printRatioKeysOrFallback(
     : "2x3";
 
   return getAutomaticPrintRatioKeys(getPrintRatioOrientation(primaryRatio));
+}
+
+function projectPrimaryRatioOrFallback(project: FirestoreProject) {
+  return isPrintRatioPresetKey(project.promptInputs?.primaryRatio)
+    ? project.promptInputs.primaryRatio
+    : "2x3";
 }
 
 function stripUndefined<T>(value: T): T {

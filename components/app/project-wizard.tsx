@@ -38,7 +38,6 @@ import {
   type PlanStatus
 } from "@/lib/billing/plans";
 import type { GenerationJobView } from "@/lib/jobs/generation-types";
-import { presetKeyToPixels } from "@/lib/print/math";
 import {
   getAutomaticPrintRatioKeys,
   getDefaultPrimaryPrintRatioKey,
@@ -127,12 +126,9 @@ export function ProjectWizard() {
   }, [input]);
 
   const selectedOrientation = getPrintRatioOrientation(input.primaryRatio);
-  const defaultPrimaryRatio = getDefaultPrimaryPrintRatioKey(
-    selectedOrientation
-  );
+  const defaultPrimaryRatio =
+    getDefaultPrimaryPrintRatioKey(selectedOrientation);
   const automaticRatioKeys = getAutomaticPrintRatioKeys(selectedOrientation);
-  const defaultRatioPreset = PRINT_RATIO_PRESETS[defaultPrimaryRatio];
-  const defaultRatioPixels = presetKeyToPixels(defaultPrimaryRatio);
   const defaultRatioDisplay = formatRatioKey(defaultPrimaryRatio);
   const isFreePlan = planStatus?.planKey === "free";
   const previewCreditCost = GENERATION_PREVIEW_CREDIT_COST;
@@ -563,38 +559,6 @@ export function ProjectWizard() {
 
           {step === 4 ? (
             <div className="grid gap-5">
-              <div className="rounded-lg border bg-secondary/40 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      Generation ratio
-                    </p>
-                    <p className="mt-1 text-2xl font-semibold tracking-normal">
-                      {defaultRatioDisplay}
-                    </p>
-                  </div>
-                  <Badge variant="secondary">
-                    {selectedOrientation === "landscape"
-                      ? "Landscape"
-                      : "Vertical"}
-                  </Badge>
-                </div>
-                <dl className="mt-4 grid gap-3 text-sm">
-                  <div>
-                    <dt className="text-muted-foreground">Master print file</dt>
-                    <dd className="font-mono">
-                      {defaultRatioPixels.width} x {defaultRatioPixels.height}{" "}
-                      px
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted-foreground">Print Size</dt>
-                    <dd>
-                      {defaultRatioPreset.supportedPrintSizes.join(", ")}
-                    </dd>
-                  </div>
-                </dl>
-              </div>
               {isFreePlan ? (
                 <div className="rounded-lg border bg-secondary/50 p-4 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-3">

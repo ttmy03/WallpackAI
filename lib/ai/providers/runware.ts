@@ -182,7 +182,9 @@ export class RunwareUpscaleProvider implements UpscaleProvider {
           this.options.airId ??
           process.env.RUNWARE_UPSCALE_AIR_ID ??
           RUNWARE_P_IMAGE_UPSCALE_AIR_ID,
-        targetMegapixels: readUpscaleTargetMegapixels()
+        targetMegapixels:
+          readUpscaleTargetMegapixels() ??
+          resolveUpscaleTargetMegapixelsForTargetDimensions(input)
       }
     );
     const fetcher = this.options.fetcher ?? fetch;
@@ -237,7 +239,9 @@ export class RunwareUpscaleProvider implements UpscaleProvider {
         upscaleCost: output.cost,
         cost: output.cost,
         model: task.model,
-        upscaleTargetMegapixels: task.targetMegapixels
+        upscaleTargetMegapixels: task.targetMegapixels,
+        targetWidth: input.targetWidth,
+        targetHeight: input.targetHeight
       }
     };
   }
@@ -322,6 +326,24 @@ function readUpscaleTargetMegapixels() {
   }
 
   return clampInteger(value, 1, 8);
+}
+
+function resolveUpscaleTargetMegapixelsForTargetDimensions(
+  input: UpscaleImageInput
+) {
+  if (!input.targetWidth || !input.targetHeight) {
+    return undefined;
+  }
+
+  const targetMegapixels = Math.ceil(
+    (input.targetWidth * input.targetHeight) / 1_000_000
+  );
+
+  if (!Number.isFinite(targetMegapixels) || targetMegapixels <= 0) {
+    return undefined;
+  }
+
+  return clampInteger(targetMegapixels, 1, 8);
 }
 
 function dimensionsFromMegapixels(

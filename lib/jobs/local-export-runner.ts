@@ -34,9 +34,7 @@ import {
   reserveLocalCredits
 } from "@/lib/jobs/local-generation-runner";
 import { sanitizeFilename } from "@/lib/print/filenames";
-import {
-  type PrintRatioPresetKey
-} from "@/lib/print/presets";
+import { type PrintRatioPresetKey } from "@/lib/print/presets";
 import { STYLE_PRESETS } from "@/lib/prompts/presets";
 import { getStorageProvider } from "@/lib/storage";
 
@@ -402,10 +400,7 @@ async function processLocalExportJob(jobId: string) {
 }
 
 export function isStaleExportJobView(
-  job: Pick<
-    ExportJobView,
-    "createdAt" | "startedAt" | "status" | "updatedAt"
-  >,
+  job: Pick<ExportJobView, "createdAt" | "startedAt" | "status" | "updatedAt">,
   options: { now?: Date; timeoutMs?: number } = {}
 ) {
   if (TERMINAL_STATUSES.has(job.status)) {
@@ -746,6 +741,10 @@ function buildSupportFiles(input: {
       ratioKey: file.ratioKey,
       width: file.width,
       height: file.height,
+      workingWidth: file.workingWidth,
+      workingHeight: file.workingHeight,
+      upscaleProvider: file.upscaleProvider,
+      upscaleUsage: file.upscaleUsage,
       bytes: file.bytes.byteLength,
       quality: file.quality
     })),

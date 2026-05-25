@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+import sharp from "sharp";
+
 import { getImageProvider } from "@/lib/ai";
 import type { GeneratedImage } from "@/lib/ai/image-provider";
 import { RUNWARE_GPT_IMAGE_AIR_ID } from "@/lib/ai/providers/runware";
@@ -23,13 +25,22 @@ import {
   markFirestoreProjectGenerating,
   markFirestoreProjectStatus
 } from "@/lib/firestore/projects";
+import { fitImageWithinCanvas } from "@/lib/image/fit";
 import type {
+  GeneratedArtworkDimensionPreview,
   GeneratedArtworkPreview,
   GenerationJobView,
   GenerationQuality
 } from "@/lib/jobs/generation-types";
 import type { JobStatus } from "@/lib/jobs/job-runner";
 import { sanitizeFilename } from "@/lib/print/filenames";
+import { presetKeyToPixels } from "@/lib/print/math";
+import {
+  getAutomaticPrintRatioKeys,
+  getPrintRatioOrientation,
+  isPrintRatioPresetKey,
+  type PrintRatioPresetKey
+} from "@/lib/print/presets";
 import { buildWallArtPrompt } from "@/lib/prompts/builder";
 import { promptInputSchema, type PromptInput } from "@/lib/prompts/schema";
 import { getStorageProvider } from "@/lib/storage";
@@ -80,6 +91,9 @@ type EnqueueLocalGenerationInput = {
 };
 
 const DEFAULT_DEV_CREDITS = 50;
+const DIMENSION_PREVIEW_LONG_EDGE_PX = 1400;
+const DIMENSION_PREVIEW_BACKGROUND = "#ffffff";
+const DIMENSION_PREVIEW_BLUR_SIGMA = 20;
 const TERMINAL_STATUSES = new Set<JobStatus>([
   "succeeded",
   "failed",
@@ -424,7 +438,8 @@ async function processLocalGenerationJob(jobId: string) {
           index,
           userId: job.userId,
           projectId: job.projectId,
-          jobId: job.id
+          jobId: job.id,
+          primaryRatio: job.primaryRatio
         })
       )
     );
@@ -492,7 +507,13 @@ function ensureDevCredits(userId: string) {
 
 async function toArtworkPreview(
   image: GeneratedImage,
-  input: { index: number; userId: string; projectId: string; jobId: string }
+  input: {
+    index: number;
+    userId: string;
+    projectId: string;
+    jobId: string;
+    primaryRatio: string;
+  }
 ): Promise<GeneratedArtworkPreview> {
   const artworkId = `art_${randomUUID()}`;
   const extension = extensionFromMimeType(image.mimeType);
@@ -503,6 +524,13 @@ async function toArtworkPreview(
     safeStorageSegment(artworkId),
     `source-${input.index + 1}.${extension}`
   ].join("/");
+  const dimensionPreviews = await createArtworkDimensionPreviews(image, {
+    artworkId,
+    userId: input.userId,
+    projectId: input.projectId,
+    jobId: input.jobId,
+    primaryRatio: input.primaryRatio
+  });
 
   if (process.env.NODE_ENV !== "test") {
     await getStorageProvider().uploadObject({
@@ -529,6 +557,7 @@ async function toArtworkPreview(
       providerRequestId: image.providerRequestId,
       sourceStoragePath: storagePath,
       previewStoragePath: storagePath,
+      dimensionPreviews,
       createdAt: new Date().toISOString()
     };
   }
@@ -544,8 +573,168 @@ async function toArtworkPreview(
     providerRequestId: image.providerRequestId,
     sourceStoragePath: storagePath,
     previewStoragePath: storagePath,
+    dimensionPreviews,
     createdAt: new Date().toISOString()
   };
+}
+
+async function createArtworkDimensionPreviews(
+  image: GeneratedImage,
+  input: {
+    artworkId: string;
+    userId: string;
+    projectId: string;
+    jobId: string;
+    primaryRatio: string;
+  }
+): Promise<GeneratedArtworkDimensionPreview[]> {
+  const ratioKeys = automaticRatioKeysForPrimaryRatio(input.primaryRatio);
+
+  return Promise.all(
+    ratioKeys.map((ratioKey) =>
+      createArtworkDimensionPreview(image, {
+        ...input,
+        ratioKey
+      })
+    )
+  );
+}
+
+async function createArtworkDimensionPreview(
+  image: GeneratedImage,
+  input: {
+    artworkId: string;
+    userId: string;
+    projectId: string;
+    jobId: string;
+    ratioKey: PrintRatioPresetKey;
+  }
+): Promise<GeneratedArtworkDimensionPreview> {
+  const printPixels = presetKeyToPixels(input.ratioKey);
+  const previewPixels = scalePreviewPixels(printPixels);
+  const previewBytes = await renderDimensionPreview({
+    sourceBytes: Buffer.from(image.bytes),
+    sourceWidth: image.width,
+    sourceHeight: image.height,
+    targetWidth: previewPixels.width,
+    targetHeight: previewPixels.height
+  });
+  const createdAt = new Date().toISOString();
+  const previewStoragePath = [
+    "previews",
+    safeStorageSegment(input.userId),
+    safeStorageSegment(input.projectId),
+    safeStorageSegment(input.artworkId),
+    `${safeStorageSegment(input.ratioKey)}.jpg`
+  ].join("/");
+
+  if (process.env.NODE_ENV !== "test") {
+    await getStorageProvider().uploadObject({
+      path: previewStoragePath,
+      bytes: previewBytes,
+      contentType: "image/jpeg",
+      metadata: {
+        projectId: input.projectId,
+        generationJobId: input.jobId,
+        artworkId: input.artworkId,
+        ratioKey: input.ratioKey
+      }
+    });
+    const signedUrl =
+      await getStorageProvider().createSignedDownloadUrl(previewStoragePath);
+
+    return {
+      ratioKey: input.ratioKey,
+      previewUrl: signedUrl.url,
+      previewUrlExpiresAt: signedUrl.expiresAt.toISOString(),
+      printWidth: printPixels.width,
+      printHeight: printPixels.height,
+      previewWidth: previewPixels.width,
+      previewHeight: previewPixels.height,
+      previewStoragePath,
+      createdAt
+    };
+  }
+
+  return {
+    ratioKey: input.ratioKey,
+    dataUrl: `data:image/jpeg;base64,${previewBytes.toString("base64")}`,
+    printWidth: printPixels.width,
+    printHeight: printPixels.height,
+    previewWidth: previewPixels.width,
+    previewHeight: previewPixels.height,
+    previewStoragePath,
+    createdAt
+  };
+}
+
+async function renderDimensionPreview(input: {
+  sourceBytes: Buffer;
+  sourceWidth: number;
+  sourceHeight: number;
+  targetWidth: number;
+  targetHeight: number;
+}) {
+  const targetPixels = {
+    width: input.targetWidth,
+    height: input.targetHeight
+  };
+  const frame = fitImageWithinCanvas(
+    { width: input.sourceWidth, height: input.sourceHeight },
+    targetPixels
+  );
+  const foreground = await sharp(input.sourceBytes)
+    .rotate()
+    .resize({
+      width: frame.width,
+      height: frame.height,
+      fit: "fill",
+      kernel: sharp.kernel.lanczos3,
+      withoutEnlargement: false
+    })
+    .flatten({ background: DIMENSION_PREVIEW_BACKGROUND })
+    .toColorspace("srgb")
+    .toBuffer();
+  const background = await sharp(input.sourceBytes)
+    .rotate()
+    .resize({
+      width: targetPixels.width,
+      height: targetPixels.height,
+      fit: "cover",
+      position: "center",
+      kernel: sharp.kernel.lanczos3,
+      withoutEnlargement: false
+    })
+    .flatten({ background: DIMENSION_PREVIEW_BACKGROUND })
+    .blur(DIMENSION_PREVIEW_BLUR_SIGMA)
+    .modulate({ brightness: 1.04, saturation: 1.08 })
+    .toColorspace("srgb")
+    .toBuffer();
+
+  return sharp(background)
+    .composite([{ input: foreground, left: frame.left, top: frame.top }])
+    .jpeg({
+      quality: 82,
+      progressive: true,
+      mozjpeg: true
+    })
+    .toBuffer();
+}
+
+function scalePreviewPixels(printPixels: { width: number; height: number }) {
+  const longEdge = Math.max(printPixels.width, printPixels.height);
+  const scale = DIMENSION_PREVIEW_LONG_EDGE_PX / longEdge;
+
+  return {
+    width: Math.max(1, Math.round(printPixels.width * scale)),
+    height: Math.max(1, Math.round(printPixels.height * scale))
+  };
+}
+
+function automaticRatioKeysForPrimaryRatio(primaryRatio: string) {
+  const ratioKey = isPrintRatioPresetKey(primaryRatio) ? primaryRatio : "2x3";
+
+  return getAutomaticPrintRatioKeys(getPrintRatioOrientation(ratioKey));
 }
 
 function toGenerationJobView(job: LocalGenerationJob): GenerationJobView {

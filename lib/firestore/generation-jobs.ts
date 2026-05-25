@@ -5,10 +5,12 @@ import {
   generationJobDocumentPath
 } from "@/lib/firestore/collections";
 import type {
+  GeneratedArtworkDimensionPreview,
   GeneratedArtworkPreview,
   GenerationJobView
 } from "@/lib/jobs/generation-types";
 import type { JobStatus } from "@/lib/jobs/job-runner";
+import { isPrintRatioPresetKey } from "@/lib/print/presets";
 import { getStorageProvider } from "@/lib/storage";
 
 type FirestoreGenerationJobDocument = Omit<GenerationJobView, "artworks"> & {
@@ -24,10 +26,21 @@ type FirestoreArtworkDocument = {
   providerRequestId: string | null;
   sourceStoragePath: string;
   previewStoragePath: string;
+  dimensionPreviews: FirestoreArtworkDimensionPreviewDocument[];
   createdAt: string;
   userId: string;
   projectId: string;
   generationJobId: string;
+};
+
+type FirestoreArtworkDimensionPreviewDocument = {
+  ratioKey: GeneratedArtworkDimensionPreview["ratioKey"];
+  printWidth: number;
+  printHeight: number;
+  previewWidth: number;
+  previewHeight: number;
+  previewStoragePath: string;
+  createdAt: string;
 };
 
 export async function saveFirestoreGenerationJob(
@@ -189,6 +202,9 @@ function firestoreArtworkDocumentFromPreview(
     providerRequestId: artwork.providerRequestId ?? null,
     sourceStoragePath: artwork.sourceStoragePath,
     previewStoragePath: artwork.previewStoragePath ?? artwork.sourceStoragePath,
+    dimensionPreviews: (artwork.dimensionPreviews ?? []).map(
+      firestoreArtworkDimensionPreviewDocumentFromPreview
+    ),
     createdAt: artwork.createdAt,
     userId: input.userId,
     projectId: input.projectId,
@@ -222,8 +238,88 @@ async function artworkPreviewFromDocument(
     previewStoragePath,
     previewUrl: signedUrl?.url,
     previewUrlExpiresAt: signedUrl?.expiresAt.toISOString(),
+    dimensionPreviews: await Promise.all(
+      artworkDimensionPreviewDocuments(data.dimensionPreviews).map(
+        artworkDimensionPreviewFromDocument
+      )
+    ),
     createdAt: stringOrFallback(data.createdAt, new Date(0).toISOString())
   };
+}
+
+function firestoreArtworkDimensionPreviewDocumentFromPreview(
+  preview: GeneratedArtworkDimensionPreview
+): FirestoreArtworkDimensionPreviewDocument {
+  return {
+    ratioKey: preview.ratioKey,
+    printWidth: preview.printWidth,
+    printHeight: preview.printHeight,
+    previewWidth: preview.previewWidth,
+    previewHeight: preview.previewHeight,
+    previewStoragePath: preview.previewStoragePath ?? "",
+    createdAt: preview.createdAt
+  };
+}
+
+async function artworkDimensionPreviewFromDocument(
+  data: FirestoreArtworkDimensionPreviewDocument
+): Promise<GeneratedArtworkDimensionPreview> {
+  const signedUrl =
+    data.previewStoragePath.length > 0
+      ? await getStorageProvider().createSignedDownloadUrl(
+          data.previewStoragePath
+        )
+      : null;
+
+  return {
+    ratioKey: data.ratioKey,
+    printWidth: data.printWidth,
+    printHeight: data.printHeight,
+    previewWidth: data.previewWidth,
+    previewHeight: data.previewHeight,
+    previewStoragePath: data.previewStoragePath,
+    previewUrl: signedUrl?.url,
+    previewUrlExpiresAt: signedUrl?.expiresAt.toISOString(),
+    createdAt: data.createdAt
+  };
+}
+
+function artworkDimensionPreviewDocuments(
+  value: unknown
+): FirestoreArtworkDimensionPreviewDocument[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((preview): FirestoreArtworkDimensionPreviewDocument | null => {
+      if (typeof preview !== "object" || preview === null) {
+        return null;
+      }
+
+      const data = preview as Record<string, unknown>;
+
+      if (
+        !isPrintRatioPresetKey(data.ratioKey) ||
+        typeof data.previewStoragePath !== "string"
+      ) {
+        return null;
+      }
+
+      return {
+        ratioKey: data.ratioKey,
+        printWidth: numberOrFallback(data.printWidth, 0),
+        printHeight: numberOrFallback(data.printHeight, 0),
+        previewWidth: numberOrFallback(data.previewWidth, 0),
+        previewHeight: numberOrFallback(data.previewHeight, 0),
+        previewStoragePath: data.previewStoragePath,
+        createdAt: stringOrFallback(data.createdAt, new Date(0).toISOString())
+      };
+    })
+    .filter(
+      (preview): preview is FirestoreArtworkDimensionPreviewDocument =>
+        preview !== null
+    );
 }
 
 function jobStatusOrFallback(value: unknown): JobStatus {

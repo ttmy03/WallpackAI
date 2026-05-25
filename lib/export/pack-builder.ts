@@ -33,6 +33,10 @@ export type BuiltPrintFile = BuiltExportFile & {
   ratioKey: PrintRatioPresetKey;
   width: number;
   height: number;
+  workingWidth: number;
+  workingHeight: number;
+  upscaleProvider: string;
+  upscaleUsage?: Record<string, unknown>;
   quality: number;
   resizeFactor: number;
 };
@@ -57,12 +61,20 @@ export async function buildPrintFiles(input: {
   upscaleProvider?: UpscaleProvider | null;
 }): Promise<BuildPrintFilesResult> {
   const warnings: string[] = [];
-  const source = await normalizeSourceImage(input);
   const files: BuiltPrintFile[] = [];
 
   for (const ratioKey of input.ratioKeys) {
     const preset = getPrintRatioPreset(ratioKey);
     const pixels = presetKeyToPixels(ratioKey);
+    const source = await prepareSourceForPrintFile({
+      sourceBytes: input.sourceBytes,
+      sourceMimeType: input.sourceMimeType,
+      sourceWidth: input.sourceWidth,
+      sourceHeight: input.sourceHeight,
+      targetWidth: pixels.width,
+      targetHeight: pixels.height,
+      upscaleProvider: input.upscaleProvider
+    });
     const rendered = await renderJpegWithinTarget(
       source.bytes,
       {
@@ -89,6 +101,10 @@ export async function buildPrintFiles(input: {
       ratioKey,
       width: pixels.width,
       height: pixels.height,
+      workingWidth: source.width,
+      workingHeight: source.height,
+      upscaleProvider: source.upscaleProvider,
+      upscaleUsage: source.upscaleUsage,
       quality: rendered.quality,
       resizeFactor:
         Math.max(pixels.width, pixels.height) /
@@ -101,10 +117,25 @@ export async function buildPrintFiles(input: {
     warnings,
     sourceWidth: input.sourceWidth,
     sourceHeight: input.sourceHeight,
-    workingWidth: source.width,
-    workingHeight: source.height,
-    upscaleProvider: source.upscaleProvider,
-    upscaleUsage: source.upscaleUsage
+    workingWidth: maxPrintFileDimension(
+      files,
+      "workingWidth",
+      input.sourceWidth
+    ),
+    workingHeight: maxPrintFileDimension(
+      files,
+      "workingHeight",
+      input.sourceHeight
+    ),
+    upscaleProvider: summarizeUpscaleProviders(files),
+    upscaleUsage: {
+      mode: "per-ratio",
+      files: files.map((file) => ({
+        ratioKey: file.ratioKey,
+        provider: file.upscaleProvider,
+        usage: file.upscaleUsage
+      }))
+    }
   };
 }
 
@@ -120,27 +151,33 @@ export function printFileToView(file: BuiltPrintFile): ExportPrintFileView {
   };
 }
 
-async function normalizeSourceImage(input: {
+async function prepareSourceForPrintFile(input: {
   sourceBytes: Buffer;
   sourceMimeType: "image/png" | "image/jpeg" | "image/webp";
   sourceWidth: number;
   sourceHeight: number;
+  targetWidth: number;
+  targetHeight: number;
   upscaleProvider?: UpscaleProvider | null;
 }) {
+  const ratioSource = await renderRatioSourceImage(input);
+
   if (!input.upscaleProvider) {
     return {
-      bytes: input.sourceBytes,
-      width: input.sourceWidth,
-      height: input.sourceHeight,
+      bytes: ratioSource.bytes,
+      width: ratioSource.width,
+      height: ratioSource.height,
       upscaleProvider: "none"
     };
   }
 
   const upscaled = await input.upscaleProvider.upscale({
-    bytes: input.sourceBytes,
-    mimeType: input.sourceMimeType,
-    width: input.sourceWidth,
-    height: input.sourceHeight
+    bytes: ratioSource.bytes,
+    mimeType: "image/jpeg",
+    width: ratioSource.width,
+    height: ratioSource.height,
+    targetWidth: input.targetWidth,
+    targetHeight: input.targetHeight
   });
   const metadata = await sharp(Buffer.from(upscaled.bytes)).metadata();
 
@@ -154,6 +191,75 @@ async function normalizeSourceImage(input: {
         : "upscale",
     upscaleUsage: upscaled.usage
   };
+}
+
+async function renderRatioSourceImage(input: {
+  sourceBytes: Buffer;
+  sourceMimeType: "image/png" | "image/jpeg" | "image/webp";
+  sourceWidth: number;
+  sourceHeight: number;
+  targetWidth: number;
+  targetHeight: number;
+}) {
+  const canvas = ratioSourceCanvasSize({
+    sourceWidth: input.sourceWidth,
+    sourceHeight: input.sourceHeight,
+    targetWidth: input.targetWidth,
+    targetHeight: input.targetHeight
+  });
+  const rendered = await renderJpegWithinTarget(
+    input.sourceBytes,
+    {
+      width: input.sourceWidth,
+      height: input.sourceHeight
+    },
+    canvas
+  );
+
+  return {
+    bytes: rendered.bytes,
+    width: canvas.width,
+    height: canvas.height
+  };
+}
+
+function ratioSourceCanvasSize(input: {
+  sourceWidth: number;
+  sourceHeight: number;
+  targetWidth: number;
+  targetHeight: number;
+}) {
+  const targetAspectRatio = input.targetWidth / input.targetHeight;
+  const sourceLongEdge = Math.max(input.sourceWidth, input.sourceHeight);
+  const width =
+    targetAspectRatio >= 1
+      ? sourceLongEdge
+      : Math.round(sourceLongEdge * targetAspectRatio);
+  const height =
+    targetAspectRatio >= 1
+      ? Math.round(sourceLongEdge / targetAspectRatio)
+      : sourceLongEdge;
+
+  return {
+    width: Math.max(1, width),
+    height: Math.max(1, height)
+  };
+}
+
+function summarizeUpscaleProviders(files: BuiltPrintFile[]) {
+  const providers = [...new Set(files.map((file) => file.upscaleProvider))];
+
+  return providers.length === 1 ? providers[0] : providers.join(",");
+}
+
+function maxPrintFileDimension(
+  files: BuiltPrintFile[],
+  key: "workingWidth" | "workingHeight",
+  fallback: number
+) {
+  return files.length > 0
+    ? Math.max(...files.map((file) => file[key]))
+    : fallback;
 }
 
 async function renderJpegWithinTarget(

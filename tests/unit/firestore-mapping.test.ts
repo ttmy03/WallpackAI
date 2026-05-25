@@ -64,7 +64,33 @@ describe("Firestore persistence helpers", () => {
     expect(project.userId).toBe("firebase-user-1");
     expect(project.status).toBe("ready");
     expect(project.promptInputs.subject).toBe("minimalist mountain landscape");
-    expect(project.printRatioKeys).toEqual(["2x3"]);
+    expect(project.printRatioKeys).toEqual([
+      "2x3",
+      "3x4",
+      "4x5",
+      "5x7",
+      "11x14"
+    ]);
+  });
+
+  it("expands legacy single-ratio project packs into full Etsy dimensions", () => {
+    const project = firestoreProjectFromDocument("prj_legacy", {
+      userId: "firebase-user-1",
+      name: "Legacy mountain set",
+      status: "ready",
+      promptInputs,
+      printRatioKeys: ["2x3"],
+      createdAt: "2026-05-24T19:00:00.000Z",
+      updatedAt: "2026-05-24T19:05:00.000Z"
+    });
+
+    expect(project.printRatioKeys).toEqual([
+      "2x3",
+      "3x4",
+      "4x5",
+      "5x7",
+      "11x14"
+    ]);
   });
 
   it("maps Firestore generation jobs without image bytes", () => {

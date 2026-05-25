@@ -42,6 +42,20 @@ describe("local generation runner", () => {
     expect(job.creditCommitted).toBe(true);
     expect(job.artworks).toHaveLength(2);
     expect(job.artworks[0]?.dataUrl).toMatch(/^data:image\/png;base64,/);
+    expect(job.artworks[0]?.dimensionPreviews).toHaveLength(5);
+    expect(
+      job.artworks[0]?.dimensionPreviews?.map((preview) => preview.ratioKey)
+    ).toEqual(["2x3", "3x4", "4x5", "5x7", "11x14"]);
+    expect(job.artworks[0]?.dimensionPreviews?.[0]).toMatchObject({
+      ratioKey: "2x3",
+      printWidth: 7200,
+      printHeight: 10800,
+      previewWidth: 933,
+      previewHeight: 1400
+    });
+    expect(job.artworks[0]?.dimensionPreviews?.[0]?.dataUrl).toMatch(
+      /^data:image\/jpeg;base64,/
+    );
     expect(getLocalCreditBalance(userId)).toBe(beforeBalance - 10);
   });
 
@@ -64,6 +78,9 @@ describe("local generation runner", () => {
     expect(job.artworks[0]?.width).toBeGreaterThan(
       job.artworks[0]?.height ?? 0
     );
+    expect(
+      job.artworks[0]?.dimensionPreviews?.map((preview) => preview.ratioKey)
+    ).toEqual(["3x2", "4x3", "5x4", "7x5", "14x11"]);
   });
 
   it("blocks protected prompts before queueing provider work", async () => {

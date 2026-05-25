@@ -3,6 +3,8 @@ export type UpscaleImageInput = {
   mimeType: "image/png" | "image/jpeg" | "image/webp";
   width: number;
   height: number;
+  targetWidth?: number;
+  targetHeight?: number;
 };
 
 export type UpscaledImage = {

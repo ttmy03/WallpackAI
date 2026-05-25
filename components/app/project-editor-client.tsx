@@ -46,6 +46,7 @@ import {
 } from "@/lib/billing/plans";
 import type { ExportJobView } from "@/lib/jobs/export-types";
 import type {
+  GeneratedArtworkDimensionPreview,
   GeneratedArtworkPreview,
   GenerationJobView
 } from "@/lib/jobs/generation-types";
@@ -278,8 +279,6 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
       null,
     [detail?.artworks, selectedArtworkId]
   );
-  const selectedArtworkSrc =
-    selectedArtwork?.dataUrl ?? selectedArtwork?.previewUrl ?? null;
   const projectRatioKeys = detail
     ? getProjectRatioKeys(detail)
     : DEFAULT_AUTOMATIC_PRINT_RATIO_KEYS;
@@ -288,6 +287,18 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     () => presetKeyToPixels(selectedRatioKey),
     [selectedRatioKey]
   );
+  const selectedDimensionPreview = useMemo(
+    () =>
+      selectedArtwork?.dimensionPreviews?.find(
+        (preview) => preview.ratioKey === selectedRatioKey
+      ) ?? null,
+    [selectedArtwork, selectedRatioKey]
+  );
+  const selectedArtworkSrc =
+    getDimensionPreviewSrc(selectedDimensionPreview) ??
+    selectedArtwork?.dataUrl ??
+    selectedArtwork?.previewUrl ??
+    null;
   const selectedPreviewFrameStyle = {
     aspectRatio: `${selectedRatioPreset.ratioWidth} / ${selectedRatioPreset.ratioHeight}`,
     maxWidth: `min(100%, ${Math.round(
@@ -333,7 +344,8 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
         {
           method: "POST",
           body: JSON.stringify({
-            artworkId: selectedArtwork.artworkId
+            artworkId: selectedArtwork.artworkId,
+            ratioKeys: projectRatioKeys
           })
         }
       );
@@ -605,6 +617,13 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
             </div>
           )}
 
+          <PreviewDimensionList
+            ratioKeys={projectRatioKeys}
+            dimensionPreviews={selectedArtwork?.dimensionPreviews ?? []}
+            selectedRatioKey={selectedRatioKey}
+            onSelect={setSelectedRatioKey}
+          />
+
           {latestJob ? (
             <div className="mt-4 rounded-md border p-4 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -739,6 +758,97 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
       </div>
     </main>
   );
+}
+
+function PreviewDimensionList({
+  ratioKeys,
+  dimensionPreviews,
+  selectedRatioKey,
+  onSelect
+}: {
+  ratioKeys: PrintRatioPresetKey[];
+  dimensionPreviews: GeneratedArtworkDimensionPreview[];
+  selectedRatioKey: PrintRatioPresetKey;
+  onSelect: (key: PrintRatioPresetKey) => void;
+}) {
+  return (
+    <div className="mt-4">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-medium">Prepared print dimensions</p>
+        <Badge variant="secondary">{ratioKeys.length} files</Badge>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
+        {ratioKeys.map((key) => {
+          const preset = PRINT_RATIO_PRESETS[key];
+          const pixels = presetKeyToPixels(key);
+          const dimensionPreview =
+            dimensionPreviews.find((preview) => preview.ratioKey === key) ??
+            null;
+          const previewSrc = getDimensionPreviewSrc(dimensionPreview);
+          const selected = selectedRatioKey === key;
+
+          return (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => onSelect(key)}
+              className={`rounded-md border px-3 py-2 text-left text-sm transition hover:border-primary hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                selected
+                  ? "border-primary bg-primary/10 ring-2 ring-primary/20"
+                  : ""
+              }`}
+            >
+              <span className="flex gap-3">
+                <span
+                  className="relative grid h-16 w-12 shrink-0 place-items-center overflow-hidden rounded-sm bg-secondary text-[10px] text-muted-foreground"
+                  style={{
+                    aspectRatio: `${preset.ratioWidth} / ${preset.ratioHeight}`
+                  }}
+                >
+                  {previewSrc && dimensionPreview ? (
+                    <Image
+                      src={previewSrc}
+                      alt=""
+                      width={dimensionPreview.previewWidth}
+                      height={dimensionPreview.previewHeight}
+                      unoptimized
+                      aria-hidden="true"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    "Pending"
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="min-w-0 truncate font-medium">
+                      {preset.label}
+                    </span>
+                    <Badge variant={selected ? "default" : "secondary"}>
+                      {key}
+                    </Badge>
+                  </span>
+                  <span className="mt-1 block font-mono text-xs text-muted-foreground">
+                    {pixels.width} x {pixels.height} px
+                  </span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {previewSrc ? "Generated preview ready" : "Preview pending"}
+                  </span>
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function getDimensionPreviewSrc(
+  preview: GeneratedArtworkDimensionPreview | null | undefined
+) {
+  return preview?.dataUrl ?? preview?.previewUrl ?? null;
 }
 
 function RatioPreviewButton({
