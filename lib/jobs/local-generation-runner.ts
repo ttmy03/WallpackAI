@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 
 import { getImageProvider } from "@/lib/ai";
-import type { GeneratedImage } from "@/lib/ai/image-provider";
+import type { GeneratedImage, ImageProvider } from "@/lib/ai/image-provider";
 import { RUNWARE_GPT_IMAGE_AIR_ID } from "@/lib/ai/providers/runware";
 import {
   InMemoryCreditLedger,
@@ -37,6 +37,7 @@ import { sanitizeFilename } from "@/lib/print/filenames";
 import { presetKeyToPixels } from "@/lib/print/math";
 import {
   getAutomaticPrintRatioKeys,
+  getPrintRatioPreset,
   getPrintRatioOrientation,
   isPrintRatioPresetKey,
   type PrintRatioPresetKey
@@ -74,6 +75,11 @@ type LocalGenerationJob = {
 type LocalGenerationState = {
   jobs: Map<string, LocalGenerationJob>;
   ledger: InMemoryCreditLedger;
+};
+
+type GeneratedArtworkRatioSource = {
+  ratioKey: PrintRatioPresetKey;
+  image: GeneratedImage;
 };
 
 type GlobalWithLocalGenerationState = typeof globalThis & {
@@ -419,11 +425,11 @@ async function processLocalGenerationJob(jobId: string) {
     job.stage = "provider_generation";
     await persistGenerationJob(job);
 
-    const images = await getImageProvider().generate({
+    const artworkSources = await generateArtworkRatioSources({
       prompt: job.prompt,
       negativePrompt: job.negativePrompt,
       count: job.requestedCount,
-      aspectRatio: job.primaryRatio
+      primaryRatio: job.primaryRatio
     });
 
     job.status = "processing";
@@ -433,9 +439,8 @@ async function processLocalGenerationJob(jobId: string) {
     job.stage = "storage_upload";
     await persistGenerationJob(job);
     job.artworks = await Promise.all(
-      images.map((image, index) =>
-        toArtworkPreview(image, {
-          index,
+      artworkSources.map((ratioSources) =>
+        toArtworkPreview(ratioSources, {
           userId: job.userId,
           projectId: job.projectId,
           jobId: job.id,
@@ -486,6 +491,72 @@ async function processLocalGenerationJob(jobId: string) {
   }
 }
 
+async function generateArtworkRatioSources(input: {
+  prompt: string;
+  negativePrompt: string;
+  count: number;
+  primaryRatio: string;
+}): Promise<GeneratedArtworkRatioSource[][]> {
+  const imageProvider = getImageProvider();
+  const ratioKeys = automaticRatioKeysForPrimaryRatio(input.primaryRatio);
+  const artworkSources: GeneratedArtworkRatioSource[][] = [];
+
+  for (let index = 0; index < input.count; index += 1) {
+    const ratioSources = await Promise.all(
+      ratioKeys.map((ratioKey) =>
+        generateSingleRatioSource(imageProvider, {
+          prompt: input.prompt,
+          negativePrompt: input.negativePrompt,
+          ratioKey
+        })
+      )
+    );
+
+    artworkSources.push(ratioSources);
+  }
+
+  return artworkSources;
+}
+
+async function generateSingleRatioSource(
+  imageProvider: ImageProvider,
+  input: {
+    prompt: string;
+    negativePrompt: string;
+    ratioKey: PrintRatioPresetKey;
+  }
+): Promise<GeneratedArtworkRatioSource> {
+  const [image] = await imageProvider.generate({
+    prompt: promptForGeneratedRatio(input.prompt, input.ratioKey),
+    negativePrompt: input.negativePrompt,
+    count: 1,
+    aspectRatio: input.ratioKey
+  });
+
+  if (!image) {
+    throw new Error(`Image provider did not return ${input.ratioKey} artwork.`);
+  }
+
+  return {
+    ratioKey: input.ratioKey,
+    image
+  };
+}
+
+function promptForGeneratedRatio(
+  prompt: string,
+  ratioKey: PrintRatioPresetKey
+) {
+  const ratio = getPrintRatioPreset(ratioKey);
+
+  return [
+    prompt,
+    "",
+    `Generate this specific Etsy pack ratio as its own complete source artwork: ${ratio.label}.`,
+    "Do not create a cropped mockup of another ratio; compose the artwork natively for this canvas."
+  ].join("\n");
+}
+
 function shouldUseInMemoryCreditLedger() {
   return (
     process.env.NODE_ENV === "test" ||
@@ -506,9 +577,8 @@ function ensureDevCredits(userId: string) {
 }
 
 async function toArtworkPreview(
-  image: GeneratedImage,
+  ratioSources: GeneratedArtworkRatioSource[],
   input: {
-    index: number;
     userId: string;
     projectId: string;
     jobId: string;
@@ -516,47 +586,52 @@ async function toArtworkPreview(
   }
 ): Promise<GeneratedArtworkPreview> {
   const artworkId = `art_${randomUUID()}`;
-  const extension = extensionFromMimeType(image.mimeType);
-  const storagePath = [
-    "sources",
-    safeStorageSegment(input.userId),
-    safeStorageSegment(input.projectId),
-    safeStorageSegment(artworkId),
-    `source-${input.index + 1}.${extension}`
-  ].join("/");
-  const dimensionPreviews = await createArtworkDimensionPreviews(image, {
+  const primaryRatioKey = isPrintRatioPresetKey(input.primaryRatio)
+    ? input.primaryRatio
+    : ratioSources[0]?.ratioKey;
+  const primaryRatioSource =
+    ratioSources.find((source) => source.ratioKey === primaryRatioKey) ??
+    ratioSources[0];
+
+  if (!primaryRatioSource) {
+    throw new Error("Image provider did not return artwork sources.");
+  }
+
+  const dimensionPreviews = await createArtworkDimensionPreviews(ratioSources, {
     artworkId,
     userId: input.userId,
     projectId: input.projectId,
-    jobId: input.jobId,
-    primaryRatio: input.primaryRatio
+    jobId: input.jobId
   });
+  const primaryDimensionPreview =
+    dimensionPreviews.find(
+      (preview) => preview.ratioKey === primaryRatioSource.ratioKey
+    ) ?? dimensionPreviews[0];
+  const primarySourceStoragePath =
+    primaryDimensionPreview?.sourceStoragePath ??
+    sourceStoragePathFor({
+      userId: input.userId,
+      projectId: input.projectId,
+      artworkId,
+      ratioKey: primaryRatioSource.ratioKey,
+      extension: extensionFromMimeType(primaryRatioSource.image.mimeType)
+    });
 
   if (process.env.NODE_ENV !== "test") {
-    await getStorageProvider().uploadObject({
-      path: storagePath,
-      bytes: image.bytes,
-      contentType: image.mimeType,
-      metadata: {
-        projectId: input.projectId,
-        generationJobId: input.jobId,
-        artworkId,
-        providerRequestId: image.providerRequestId ?? ""
-      }
-    });
-    const signedUrl =
-      await getStorageProvider().createSignedDownloadUrl(storagePath);
+    const signedUrl = await getStorageProvider().createSignedDownloadUrl(
+      primarySourceStoragePath
+    );
 
     return {
       artworkId,
       previewUrl: signedUrl.url,
       previewUrlExpiresAt: signedUrl.expiresAt.toISOString(),
-      width: image.width,
-      height: image.height,
-      mimeType: image.mimeType,
-      providerRequestId: image.providerRequestId,
-      sourceStoragePath: storagePath,
-      previewStoragePath: storagePath,
+      width: primaryRatioSource.image.width,
+      height: primaryRatioSource.image.height,
+      mimeType: primaryRatioSource.image.mimeType,
+      providerRequestId: primaryRatioSource.image.providerRequestId,
+      sourceStoragePath: primarySourceStoragePath,
+      previewStoragePath: primarySourceStoragePath,
       dimensionPreviews,
       createdAt: new Date().toISOString()
     };
@@ -564,37 +639,36 @@ async function toArtworkPreview(
 
   return {
     artworkId,
-    dataUrl: `data:${image.mimeType};base64,${Buffer.from(image.bytes).toString(
-      "base64"
-    )}`,
-    width: image.width,
-    height: image.height,
-    mimeType: image.mimeType,
-    providerRequestId: image.providerRequestId,
-    sourceStoragePath: storagePath,
-    previewStoragePath: storagePath,
+    dataUrl:
+      primaryDimensionPreview?.sourceDataUrl ??
+      `data:${primaryRatioSource.image.mimeType};base64,${Buffer.from(
+        primaryRatioSource.image.bytes
+      ).toString("base64")}`,
+    width: primaryRatioSource.image.width,
+    height: primaryRatioSource.image.height,
+    mimeType: primaryRatioSource.image.mimeType,
+    providerRequestId: primaryRatioSource.image.providerRequestId,
+    sourceStoragePath: primarySourceStoragePath,
+    previewStoragePath: primarySourceStoragePath,
     dimensionPreviews,
     createdAt: new Date().toISOString()
   };
 }
 
 async function createArtworkDimensionPreviews(
-  image: GeneratedImage,
+  ratioSources: GeneratedArtworkRatioSource[],
   input: {
     artworkId: string;
     userId: string;
     projectId: string;
     jobId: string;
-    primaryRatio: string;
   }
 ): Promise<GeneratedArtworkDimensionPreview[]> {
-  const ratioKeys = automaticRatioKeysForPrimaryRatio(input.primaryRatio);
-
   return Promise.all(
-    ratioKeys.map((ratioKey) =>
-      createArtworkDimensionPreview(image, {
+    ratioSources.map((source) =>
+      createArtworkDimensionPreview(source.image, {
         ...input,
-        ratioKey
+        ratioKey: source.ratioKey
       })
     )
   );
@@ -612,6 +686,13 @@ async function createArtworkDimensionPreview(
 ): Promise<GeneratedArtworkDimensionPreview> {
   const printPixels = presetKeyToPixels(input.ratioKey);
   const previewPixels = scalePreviewPixels(printPixels);
+  const sourceStoragePath = sourceStoragePathFor({
+    userId: input.userId,
+    projectId: input.projectId,
+    artworkId: input.artworkId,
+    ratioKey: input.ratioKey,
+    extension: extensionFromMimeType(image.mimeType)
+  });
   const previewBytes = await renderDimensionPreview({
     sourceBytes: Buffer.from(image.bytes),
     sourceWidth: image.width,
@@ -630,6 +711,18 @@ async function createArtworkDimensionPreview(
 
   if (process.env.NODE_ENV !== "test") {
     await getStorageProvider().uploadObject({
+      path: sourceStoragePath,
+      bytes: image.bytes,
+      contentType: image.mimeType,
+      metadata: {
+        projectId: input.projectId,
+        generationJobId: input.jobId,
+        artworkId: input.artworkId,
+        ratioKey: input.ratioKey,
+        providerRequestId: image.providerRequestId ?? ""
+      }
+    });
+    await getStorageProvider().uploadObject({
       path: previewStoragePath,
       bytes: previewBytes,
       contentType: "image/jpeg",
@@ -647,6 +740,11 @@ async function createArtworkDimensionPreview(
       ratioKey: input.ratioKey,
       previewUrl: signedUrl.url,
       previewUrlExpiresAt: signedUrl.expiresAt.toISOString(),
+      sourceStoragePath,
+      sourceWidth: image.width,
+      sourceHeight: image.height,
+      sourceMimeType: image.mimeType,
+      sourceProviderRequestId: image.providerRequestId,
       printWidth: printPixels.width,
       printHeight: printPixels.height,
       previewWidth: previewPixels.width,
@@ -659,6 +757,14 @@ async function createArtworkDimensionPreview(
   return {
     ratioKey: input.ratioKey,
     dataUrl: `data:image/jpeg;base64,${previewBytes.toString("base64")}`,
+    sourceDataUrl: `data:${image.mimeType};base64,${Buffer.from(
+      image.bytes
+    ).toString("base64")}`,
+    sourceStoragePath,
+    sourceWidth: image.width,
+    sourceHeight: image.height,
+    sourceMimeType: image.mimeType,
+    sourceProviderRequestId: image.providerRequestId,
     printWidth: printPixels.width,
     printHeight: printPixels.height,
     previewWidth: previewPixels.width,
@@ -838,6 +944,23 @@ function extensionFromMimeType(mimeType: GeneratedImage["mimeType"]) {
   }
 
   return "png";
+}
+
+function sourceStoragePathFor(input: {
+  userId: string;
+  projectId: string;
+  artworkId: string;
+  ratioKey: PrintRatioPresetKey;
+  extension: string;
+}) {
+  return [
+    "sources",
+    safeStorageSegment(input.userId),
+    safeStorageSegment(input.projectId),
+    safeStorageSegment(input.artworkId),
+    safeStorageSegment(input.ratioKey),
+    `source.${input.extension}`
+  ].join("/");
 }
 
 function safeStorageSegment(value: string) {

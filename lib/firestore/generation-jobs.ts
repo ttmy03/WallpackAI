@@ -6,6 +6,7 @@ import {
 } from "@/lib/firestore/collections";
 import type {
   GeneratedArtworkDimensionPreview,
+  GeneratedArtworkMimeType,
   GeneratedArtworkPreview,
   GenerationJobView
 } from "@/lib/jobs/generation-types";
@@ -35,6 +36,11 @@ type FirestoreArtworkDocument = {
 
 type FirestoreArtworkDimensionPreviewDocument = {
   ratioKey: GeneratedArtworkDimensionPreview["ratioKey"];
+  sourceStoragePath?: string;
+  sourceWidth?: number;
+  sourceHeight?: number;
+  sourceMimeType?: GeneratedArtworkMimeType;
+  sourceProviderRequestId?: string;
   printWidth: number;
   printHeight: number;
   previewWidth: number;
@@ -229,10 +235,7 @@ async function artworkPreviewFromDocument(
     artworkId: id,
     width: numberOrFallback(data.width, 0),
     height: numberOrFallback(data.height, 0),
-    mimeType:
-      data.mimeType === "image/jpeg" || data.mimeType === "image/webp"
-        ? data.mimeType
-        : "image/png",
+    mimeType: imageMimeTypeOrFallback(data.mimeType, "image/png"),
     providerRequestId: nullableString(data.providerRequestId) ?? undefined,
     sourceStoragePath: stringOrFallback(data.sourceStoragePath, ""),
     previewStoragePath,
@@ -250,7 +253,7 @@ async function artworkPreviewFromDocument(
 function firestoreArtworkDimensionPreviewDocumentFromPreview(
   preview: GeneratedArtworkDimensionPreview
 ): FirestoreArtworkDimensionPreviewDocument {
-  return {
+  const document: FirestoreArtworkDimensionPreviewDocument = {
     ratioKey: preview.ratioKey,
     printWidth: preview.printWidth,
     printHeight: preview.printHeight,
@@ -259,6 +262,28 @@ function firestoreArtworkDimensionPreviewDocumentFromPreview(
     previewStoragePath: preview.previewStoragePath ?? "",
     createdAt: preview.createdAt
   };
+
+  if (preview.sourceStoragePath) {
+    document.sourceStoragePath = preview.sourceStoragePath;
+  }
+
+  if (typeof preview.sourceWidth === "number") {
+    document.sourceWidth = preview.sourceWidth;
+  }
+
+  if (typeof preview.sourceHeight === "number") {
+    document.sourceHeight = preview.sourceHeight;
+  }
+
+  if (preview.sourceMimeType) {
+    document.sourceMimeType = preview.sourceMimeType;
+  }
+
+  if (preview.sourceProviderRequestId) {
+    document.sourceProviderRequestId = preview.sourceProviderRequestId;
+  }
+
+  return document;
 }
 
 async function artworkDimensionPreviewFromDocument(
@@ -273,6 +298,11 @@ async function artworkDimensionPreviewFromDocument(
 
   return {
     ratioKey: data.ratioKey,
+    sourceStoragePath: data.sourceStoragePath,
+    sourceWidth: data.sourceWidth,
+    sourceHeight: data.sourceHeight,
+    sourceMimeType: data.sourceMimeType,
+    sourceProviderRequestId: data.sourceProviderRequestId,
     printWidth: data.printWidth,
     printHeight: data.printHeight,
     previewWidth: data.previewWidth,
@@ -308,6 +338,11 @@ function artworkDimensionPreviewDocuments(
 
       return {
         ratioKey: data.ratioKey,
+        sourceStoragePath: optionalString(data.sourceStoragePath),
+        sourceWidth: optionalNumber(data.sourceWidth),
+        sourceHeight: optionalNumber(data.sourceHeight),
+        sourceMimeType: imageMimeTypeOrNull(data.sourceMimeType),
+        sourceProviderRequestId: optionalString(data.sourceProviderRequestId),
         printWidth: numberOrFallback(data.printWidth, 0),
         printHeight: numberOrFallback(data.printHeight, 0),
         previewWidth: numberOrFallback(data.previewWidth, 0),
@@ -343,10 +378,39 @@ function nullableString(value: unknown) {
   return typeof value === "string" ? value : null;
 }
 
+function optionalString(value: unknown) {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
 function stringOrFallback(value: unknown, fallback: string) {
   return typeof value === "string" && value.length > 0 ? value : fallback;
 }
 
 function numberOrFallback(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function optionalNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function imageMimeTypeOrFallback(
+  value: unknown,
+  fallback: GeneratedArtworkMimeType
+): GeneratedArtworkMimeType {
+  return value === "image/png" ||
+    value === "image/jpeg" ||
+    value === "image/webp"
+    ? value
+    : fallback;
+}
+
+function imageMimeTypeOrNull(value: unknown) {
+  return value === "image/png" ||
+    value === "image/jpeg" ||
+    value === "image/webp"
+    ? value
+    : undefined;
 }

@@ -7,6 +7,7 @@ import {
   buildPrintFiles,
   type BuiltExportFile,
   type BuiltPrintFile,
+  type PrintSourceImage,
   printFileToView
 } from "@/lib/export/pack-builder";
 import { createZipArchive } from "@/lib/export/zip";
@@ -21,7 +22,10 @@ import {
   getFirestoreProjectForUser,
   type FirestoreProject
 } from "@/lib/firestore/projects";
-import type { GeneratedArtworkPreview } from "@/lib/jobs/generation-types";
+import type {
+  GeneratedArtworkDimensionPreview,
+  GeneratedArtworkPreview
+} from "@/lib/jobs/generation-types";
 import type {
   ExportArtifactView,
   ExportJobView
@@ -287,6 +291,10 @@ async function processLocalExportJob(jobId: string) {
     if (isExportJobTerminal(job)) {
       return;
     }
+    const ratioSources = await loadArtworkRatioSources(
+      artwork,
+      job.requestedRatioKeys
+    );
 
     job.stage = "preparing_print_files";
     await persistExportJob(job);
@@ -297,6 +305,7 @@ async function processLocalExportJob(jobId: string) {
       sourceWidth: artwork.width,
       sourceHeight: artwork.height,
       ratioKeys: job.requestedRatioKeys,
+      ratioSources,
       upscaleProvider: getUpscaleProvider()
     });
 
@@ -670,6 +679,64 @@ async function loadArtworkSource(artwork: GeneratedArtworkPreview) {
   return {
     bytes: object.bytes,
     mimeType: mimeTypeFromContentType(object.contentType)
+  };
+}
+
+async function loadArtworkRatioSources(
+  artwork: GeneratedArtworkPreview,
+  ratioKeys: PrintRatioPresetKey[]
+) {
+  const ratioSources: Partial<Record<PrintRatioPresetKey, PrintSourceImage>> =
+    {};
+
+  await Promise.all(
+    ratioKeys.map(async (ratioKey) => {
+      const preview = artwork.dimensionPreviews?.find(
+        (candidate) => candidate.ratioKey === ratioKey
+      );
+      const source = preview ? await loadArtworkDimensionSource(preview) : null;
+
+      if (source) {
+        ratioSources[ratioKey] = source;
+      }
+    })
+  );
+
+  return ratioSources;
+}
+
+async function loadArtworkDimensionSource(
+  preview: GeneratedArtworkDimensionPreview
+): Promise<PrintSourceImage | null> {
+  if (!preview.sourceWidth || !preview.sourceHeight) {
+    return null;
+  }
+
+  if (preview.sourceDataUrl) {
+    const source = dataUrlToSource(preview.sourceDataUrl);
+
+    return {
+      bytes: source.bytes,
+      mimeType: preview.sourceMimeType ?? source.mimeType,
+      width: preview.sourceWidth,
+      height: preview.sourceHeight
+    };
+  }
+
+  if (!preview.sourceStoragePath) {
+    return null;
+  }
+
+  const object = await getStorageProvider().downloadObject(
+    preview.sourceStoragePath
+  );
+
+  return {
+    bytes: object.bytes,
+    mimeType:
+      preview.sourceMimeType ?? mimeTypeFromContentType(object.contentType),
+    width: preview.sourceWidth,
+    height: preview.sourceHeight
   };
 }
 

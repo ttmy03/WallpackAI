@@ -65,4 +65,50 @@ describe("print pack builder", () => {
     });
     expect(result.upscaleUsage?.mode).toBe("per-ratio");
   }, 20_000);
+
+  it("uses ratio-specific generated sources when they are available", async () => {
+    const provider = new MockImageProvider();
+    const [primarySource] = await provider.generate({
+      prompt: "minimalist mountain landscape",
+      count: 1,
+      aspectRatio: "2x3"
+    });
+    const [ratioSource] = await provider.generate({
+      prompt: "minimalist mountain landscape",
+      count: 1,
+      aspectRatio: "3x4"
+    });
+    const upscaleProvider = new RecordingUpscaleProvider();
+
+    await buildPrintFiles({
+      sourceBytes: Buffer.from(primarySource.bytes),
+      sourceMimeType: primarySource.mimeType,
+      sourceWidth: primarySource.width,
+      sourceHeight: primarySource.height,
+      ratioKeys: ["2x3", "3x4"],
+      ratioSources: {
+        "3x4": {
+          bytes: Buffer.from(ratioSource.bytes),
+          mimeType: ratioSource.mimeType,
+          width: ratioSource.width,
+          height: ratioSource.height
+        }
+      },
+      upscaleProvider
+    });
+
+    expect(upscaleProvider.calls).toHaveLength(2);
+    expect(upscaleProvider.calls[0]).toMatchObject({
+      width: 864,
+      height: 1296,
+      targetWidth: 7200,
+      targetHeight: 10800
+    });
+    expect(upscaleProvider.calls[1]).toMatchObject({
+      width: 900,
+      height: 1200,
+      targetWidth: 5400,
+      targetHeight: 7200
+    });
+  }, 20_000);
 });

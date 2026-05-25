@@ -2,12 +2,22 @@ import type { JobStatus } from "@/lib/jobs/job-runner";
 import type { PrintRatioPresetKey } from "@/lib/print/presets";
 
 export type GenerationQuality = "draft" | "standard" | "premium";
+export type GeneratedArtworkMimeType =
+  | "image/png"
+  | "image/jpeg"
+  | "image/webp";
 
 export type GeneratedArtworkDimensionPreview = {
   ratioKey: PrintRatioPresetKey;
   dataUrl?: string;
   previewUrl?: string;
   previewUrlExpiresAt?: string;
+  sourceDataUrl?: string;
+  sourceStoragePath?: string;
+  sourceWidth?: number;
+  sourceHeight?: number;
+  sourceMimeType?: GeneratedArtworkMimeType;
+  sourceProviderRequestId?: string;
   printWidth: number;
   printHeight: number;
   previewWidth: number;
@@ -23,7 +33,7 @@ export type GeneratedArtworkPreview = {
   previewUrlExpiresAt?: string;
   width: number;
   height: number;
-  mimeType: "image/png" | "image/jpeg" | "image/webp";
+  mimeType: GeneratedArtworkMimeType;
   providerRequestId?: string;
   sourceStoragePath: string;
   previewStoragePath?: string;

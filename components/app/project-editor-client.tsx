@@ -299,6 +299,10 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     selectedArtwork?.dataUrl ??
     selectedArtwork?.previewUrl ??
     null;
+  const selectedSourceWidth =
+    selectedDimensionPreview?.sourceWidth ?? selectedArtwork?.width ?? 0;
+  const selectedSourceHeight =
+    selectedDimensionPreview?.sourceHeight ?? selectedArtwork?.height ?? 0;
   const selectedPreviewFrameStyle = {
     aspectRatio: `${selectedRatioPreset.ratioWidth} / ${selectedRatioPreset.ratioHeight}`,
     maxWidth: `min(100%, ${Math.round(
@@ -359,35 +363,43 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
       return;
     }
 
-    await runAction("generate", "Variant generation queued.", async () => {
-      const result = await fetchAuthenticatedApi<QueueGenerationResponse>(
-        "/api/app/generations",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            projectId,
-            promptInputs: detail.project.promptInputs,
-            previewCount: 1,
-            quality: "draft"
-          })
-        }
-      );
-      setActiveGenerationJobId(result.jobId);
-      await loadProject();
-    });
+    await runAction(
+      "generate",
+      "5-ratio variant generation queued.",
+      async () => {
+        const result = await fetchAuthenticatedApi<QueueGenerationResponse>(
+          "/api/app/generations",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              projectId,
+              promptInputs: detail.project.promptInputs,
+              previewCount: 1,
+              quality: "draft"
+            })
+          }
+        );
+        setActiveGenerationJobId(result.jobId);
+        await loadProject();
+      }
+    );
   }
 
   async function retryGeneration(jobId: string) {
-    await runAction("generate", "Variant generation queued.", async () => {
-      const result = await fetchAuthenticatedApi<RetryGenerationResponse>(
-        `/api/app/generation-jobs/${jobId}/retry`,
-        {
-          method: "POST"
-        }
-      );
-      setActiveGenerationJobId(result.jobId);
-      await loadProject();
-    });
+    await runAction(
+      "generate",
+      "5-ratio variant generation queued.",
+      async () => {
+        const result = await fetchAuthenticatedApi<RetryGenerationResponse>(
+          `/api/app/generation-jobs/${jobId}/retry`,
+          {
+            method: "POST"
+          }
+        );
+        setActiveGenerationJobId(result.jobId);
+        await loadProject();
+      }
+    );
   }
 
   async function retryExport(jobId: string) {
@@ -537,14 +549,14 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
                 className="w-full"
                 disabled={!canGenerateVariant}
                 onClick={() => void startVariantGeneration()}
-                title={`Generate one additional artwork variant for ${GENERATION_PREVIEW_CREDIT_COST} credits.`}
+                title={`Generate one additional 5-ratio artwork variant for ${GENERATION_PREVIEW_CREDIT_COST} credits.`}
               >
                 {action.pending === "generate" || generationRunning ? (
                   <Loader2 className="animate-spin" />
                 ) : (
                   <Sparkles />
                 )}
-                Add Variant ({GENERATION_PREVIEW_CREDIT_COST} credits)
+                Add 5-Ratio Variant ({GENERATION_PREVIEW_CREDIT_COST} credits)
               </Button>
             </div>
           </CardHeader>
@@ -594,9 +606,8 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
                 </div>
               </div>
               <figcaption className="mt-4 text-sm text-muted-foreground">
-                Source preview: {selectedArtwork.width} x{" "}
-                {selectedArtwork.height} px. Export preview:{" "}
-                {selectedRatioPreset.masterPrintWidthIn} x{" "}
+                Generated source: {selectedSourceWidth} x {selectedSourceHeight}{" "}
+                px. Export preview: {selectedRatioPreset.masterPrintWidthIn} x{" "}
                 {selectedRatioPreset.masterPrintHeightIn} in @{" "}
                 {selectedRatioPreset.targetDpi} DPI.
               </figcaption>

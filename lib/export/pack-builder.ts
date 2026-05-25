@@ -41,6 +41,13 @@ export type BuiltPrintFile = BuiltExportFile & {
   resizeFactor: number;
 };
 
+export type PrintSourceImage = {
+  bytes: Buffer;
+  mimeType: "image/png" | "image/jpeg" | "image/webp";
+  width: number;
+  height: number;
+};
+
 export type BuildPrintFilesResult = {
   files: BuiltPrintFile[];
   warnings: string[];
@@ -58,6 +65,7 @@ export async function buildPrintFiles(input: {
   sourceWidth: number;
   sourceHeight: number;
   ratioKeys: PrintRatioPresetKey[];
+  ratioSources?: Partial<Record<PrintRatioPresetKey, PrintSourceImage>>;
   upscaleProvider?: UpscaleProvider | null;
 }): Promise<BuildPrintFilesResult> {
   const warnings: string[] = [];
@@ -66,11 +74,19 @@ export async function buildPrintFiles(input: {
   for (const ratioKey of input.ratioKeys) {
     const preset = getPrintRatioPreset(ratioKey);
     const pixels = presetKeyToPixels(ratioKey);
+    const sourceImage =
+      input.ratioSources?.[ratioKey] ??
+      ({
+        bytes: input.sourceBytes,
+        mimeType: input.sourceMimeType,
+        width: input.sourceWidth,
+        height: input.sourceHeight
+      } satisfies PrintSourceImage);
     const source = await prepareSourceForPrintFile({
-      sourceBytes: input.sourceBytes,
-      sourceMimeType: input.sourceMimeType,
-      sourceWidth: input.sourceWidth,
-      sourceHeight: input.sourceHeight,
+      sourceBytes: sourceImage.bytes,
+      sourceMimeType: sourceImage.mimeType,
+      sourceWidth: sourceImage.width,
+      sourceHeight: sourceImage.height,
       targetWidth: pixels.width,
       targetHeight: pixels.height,
       upscaleProvider: input.upscaleProvider

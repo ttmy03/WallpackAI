@@ -35,7 +35,9 @@ describe("local generation runner", () => {
 
     expect(queued.status).toBe("queued");
 
-    const job = await waitForLocalGenerationJob(queued.jobId);
+    const job = await waitForLocalGenerationJob(queued.jobId, {
+      timeoutMs: 20_000
+    });
 
     expect(job.status).toBe("succeeded");
     expect(job.creditReserved).toBe(true);
@@ -46,6 +48,24 @@ describe("local generation runner", () => {
     expect(
       job.artworks[0]?.dimensionPreviews?.map((preview) => preview.ratioKey)
     ).toEqual(["2x3", "3x4", "4x5", "5x7", "11x14"]);
+    expect(
+      job.artworks[0]?.dimensionPreviews?.map((preview) => ({
+        ratioKey: preview.ratioKey,
+        sourceWidth: preview.sourceWidth,
+        sourceHeight: preview.sourceHeight
+      }))
+    ).toEqual([
+      { ratioKey: "2x3", sourceWidth: 864, sourceHeight: 1296 },
+      { ratioKey: "3x4", sourceWidth: 900, sourceHeight: 1200 },
+      { ratioKey: "4x5", sourceWidth: 960, sourceHeight: 1200 },
+      { ratioKey: "5x7", sourceWidth: 900, sourceHeight: 1260 },
+      { ratioKey: "11x14", sourceWidth: 990, sourceHeight: 1260 }
+    ]);
+    expect(
+      job.artworks[0]?.dimensionPreviews?.every((preview) =>
+        preview.sourceDataUrl?.startsWith("data:image/png;base64,")
+      )
+    ).toBe(true);
     expect(job.artworks[0]?.dimensionPreviews?.[0]).toMatchObject({
       ratioKey: "2x3",
       printWidth: 7200,
@@ -57,7 +77,7 @@ describe("local generation runner", () => {
       /^data:image\/jpeg;base64,/
     );
     expect(getLocalCreditBalance(userId)).toBe(beforeBalance - 10);
-  });
+  }, 20_000);
 
   it("passes landscape primary ratios through to preview generation", async () => {
     const userId = `seller-${crypto.randomUUID()}`;
@@ -71,7 +91,9 @@ describe("local generation runner", () => {
       previewCount: 1
     });
 
-    const job = await waitForLocalGenerationJob(queued.jobId);
+    const job = await waitForLocalGenerationJob(queued.jobId, {
+      timeoutMs: 20_000
+    });
 
     expect(job.status).toBe("succeeded");
     expect(job.primaryRatio).toBe("3x2");
@@ -81,7 +103,12 @@ describe("local generation runner", () => {
     expect(
       job.artworks[0]?.dimensionPreviews?.map((preview) => preview.ratioKey)
     ).toEqual(["3x2", "4x3", "5x4", "7x5", "14x11"]);
-  });
+    expect(job.artworks[0]?.dimensionPreviews?.[1]).toMatchObject({
+      ratioKey: "4x3",
+      sourceWidth: 1200,
+      sourceHeight: 900
+    });
+  }, 20_000);
 
   it("blocks protected prompts before queueing provider work", async () => {
     await expect(

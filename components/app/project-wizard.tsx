@@ -238,7 +238,7 @@ export function ProjectWizard() {
 
     if (freePreviewLimitReached) {
       setGenerationError(
-        `You need ${previewCreditCost} credits to generate a preview.`
+        `You need ${previewCreditCost} credits to generate a 5-ratio preview.`
       );
       return;
     }
@@ -573,7 +573,7 @@ export function ProjectWizard() {
                   </div>
                   <p className="mt-2 text-muted-foreground">
                     Free includes {FREE_PLAN_ONE_TIME_PREVIEW_CREDITS} one-time
-                    preview credits. Generating a preview uses{" "}
+                    preview credits. Generating five ratio sources uses{" "}
                     {previewCreditCost} credits.
                   </p>
                 </div>
@@ -599,7 +599,7 @@ export function ProjectWizard() {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
                       <ImageIcon className="size-4 text-primary" />
-                      <p className="font-medium">Preview generation</p>
+                      <p className="font-medium">5-ratio generation</p>
                     </div>
                     <Badge
                       variant={
@@ -740,10 +740,10 @@ export function ProjectWizard() {
                   <Sparkles />
                 )}
                 {isGenerationRunning
-                  ? "Generating preview"
+                  ? "Generating ratios"
                   : freePreviewLimitReached
                     ? "Not enough credits"
-                    : "Generate preview"}
+                    : "Generate 5 ratios"}
               </Button>
             )}
           </div>
@@ -788,7 +788,7 @@ export function ProjectWizard() {
                 .join(", ")}
             />
             <div className="flex flex-wrap gap-2 pt-2">
-              <Badge variant="secondary">1 preview</Badge>
+              <Badge variant="secondary">5 ratio sources</Badge>
               {isFreePlan ? (
                 <Badge variant="secondary">
                   {freePreviewCreditsRemaining ?? 0} free credits left
