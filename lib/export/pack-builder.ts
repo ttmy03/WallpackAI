@@ -1,6 +1,7 @@
 import sharp from "sharp";
 
 import type { UpscaleProvider } from "@/lib/ai/upscale-provider";
+import { fitImageWithinCanvas } from "@/lib/image/fit";
 import type { ExportPrintFileView } from "@/lib/jobs/export-types";
 import { presetKeyToPixels } from "@/lib/print/math";
 import {
@@ -10,6 +11,7 @@ import {
 
 const JPEG_QUALITY_STEPS = [90, 86, 82, 78, 74] as const;
 const TARGET_PRINT_FILE_BYTES = 18 * 1024 * 1024;
+const PRINT_FILE_BACKGROUND = "#ffffff";
 
 export type BuiltExportFile = {
   fileName: string;
@@ -60,10 +62,17 @@ export async function buildPrintFiles(input: {
   for (const ratioKey of input.ratioKeys) {
     const preset = getPrintRatioPreset(ratioKey);
     const pixels = presetKeyToPixels(ratioKey);
-    const rendered = await renderJpegWithinTarget(source.bytes, {
-      width: pixels.width,
-      height: pixels.height
-    });
+    const rendered = await renderJpegWithinTarget(
+      source.bytes,
+      {
+        width: source.width,
+        height: source.height
+      },
+      {
+        width: pixels.width,
+        height: pixels.height
+      }
+    );
 
     if (rendered.bytes.byteLength > TARGET_PRINT_FILE_BYTES) {
       warnings.push(
@@ -148,22 +157,34 @@ async function normalizeSourceImage(input: {
 
 async function renderJpegWithinTarget(
   sourceBytes: Buffer,
+  sourcePixels: { width: number; height: number },
   targetPixels: { width: number; height: number }
 ) {
   let best: { bytes: Buffer; quality: number } | null = null;
+  const frame = fitImageWithinCanvas(sourcePixels, targetPixels);
+  const fittedSource = await sharp(sourceBytes)
+    .rotate()
+    .resize({
+      width: frame.width,
+      height: frame.height,
+      fit: "fill",
+      kernel: sharp.kernel.lanczos3,
+      withoutEnlargement: false
+    })
+    .flatten({ background: PRINT_FILE_BACKGROUND })
+    .toColorspace("srgb")
+    .toBuffer();
 
   for (const quality of JPEG_QUALITY_STEPS) {
-    const bytes = await sharp(sourceBytes)
-      .rotate()
-      .resize({
+    const bytes = await sharp({
+      create: {
         width: targetPixels.width,
         height: targetPixels.height,
-        fit: "cover",
-        position: "center",
-        kernel: sharp.kernel.lanczos3,
-        withoutEnlargement: false
-      })
-      .toColorspace("srgb")
+        channels: 3,
+        background: PRINT_FILE_BACKGROUND
+      }
+    })
+      .composite([{ input: fittedSource, left: frame.left, top: frame.top }])
       .jpeg({
         quality,
         progressive: true,

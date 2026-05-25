@@ -204,6 +204,12 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     () => presetKeyToPixels(selectedRatioKey),
     [selectedRatioKey]
   );
+  const selectedPreviewFrameStyle = {
+    aspectRatio: `${selectedRatioPreset.ratioWidth} / ${selectedRatioPreset.ratioHeight}`,
+    maxWidth: `min(100%, ${Math.round(
+      (720 * selectedRatioPreset.ratioWidth) / selectedRatioPreset.ratioHeight
+    )}px)`
+  };
 
   async function runAction(
     pending: ActionState["pending"],
@@ -394,17 +400,15 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
           {selectedArtwork && selectedArtworkSrc ? (
             <figure>
               <div
-                className="relative mx-auto max-h-[720px] w-full overflow-hidden rounded-md bg-secondary"
-                style={{
-                  aspectRatio: `${selectedRatioPreset.ratioWidth} / ${selectedRatioPreset.ratioHeight}`
-                }}
+                className="relative mx-auto w-full overflow-hidden rounded-md border bg-white"
+                style={selectedPreviewFrameStyle}
               >
                 <Image
                   src={selectedArtworkSrc}
                   alt="Selected generated wall-art preview"
                   fill
                   unoptimized
-                  className="object-cover"
+                  className="object-contain"
                 />
                 <div className="absolute bottom-4 left-4 rounded-md bg-black/50 px-3 py-2 text-sm text-white backdrop-blur">
                   {selectedRatioPreset.label} · {selectedRatioPixels.width} x{" "}
@@ -421,19 +425,15 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
             </figure>
           ) : selectedArtwork ? (
             <div
-              className="grid place-items-center rounded-md border border-dashed text-sm text-muted-foreground"
-              style={{
-                aspectRatio: `${selectedRatioPreset.ratioWidth} / ${selectedRatioPreset.ratioHeight}`
-              }}
+              className="mx-auto grid w-full place-items-center rounded-md border border-dashed text-sm text-muted-foreground"
+              style={selectedPreviewFrameStyle}
             >
               Preview URL is unavailable.
             </div>
           ) : (
             <div
-              className="grid place-items-center rounded-md border border-dashed text-sm text-muted-foreground"
-              style={{
-                aspectRatio: `${selectedRatioPreset.ratioWidth} / ${selectedRatioPreset.ratioHeight}`
-              }}
+              className="mx-auto grid w-full place-items-center rounded-md border border-dashed text-sm text-muted-foreground"
+              style={selectedPreviewFrameStyle}
             >
               Generate previews to start editing this project.
             </div>
@@ -524,10 +524,12 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
                   {latestExportJob.files.map((file) => (
                     <div
                       key={file.fileName}
-                      className="flex items-center justify-between gap-3"
+                      className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
                     >
-                      <span className="font-mono text-xs">{file.fileName}</span>
-                      <span className="text-muted-foreground">
+                      <span className="min-w-0 break-all font-mono text-xs">
+                        {file.fileName}
+                      </span>
+                      <span className="shrink-0 text-muted-foreground">
                         {formatBytes(file.bytes)}
                       </span>
                     </div>
@@ -672,11 +674,18 @@ function ExportJobPanel({ job }: { job: ExportJobView }) {
               asChild
               variant="outline"
               size="sm"
-              className="justify-between"
+              className="h-auto min-h-9 w-full min-w-0 flex-col items-stretch justify-between gap-1 whitespace-normal px-3 py-2 text-left sm:flex-row sm:items-center sm:gap-3"
             >
-              <a href={artifact.downloadUrl} target="_blank" rel="noreferrer">
-                <span className="truncate">{artifact.fileName}</span>
-                <span className="inline-flex items-center gap-2 text-muted-foreground">
+              <a
+                href={artifact.downloadUrl}
+                target="_blank"
+                rel="noreferrer"
+                title={artifact.fileName}
+              >
+                <span className="min-w-0 flex-1 truncate font-mono text-xs sm:text-sm">
+                  {artifact.fileName}
+                </span>
+                <span className="inline-flex shrink-0 items-center gap-2 self-end text-muted-foreground sm:self-auto">
                   {formatBytes(artifact.bytes)}
                   <Download />
                 </span>
