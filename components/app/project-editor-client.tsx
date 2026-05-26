@@ -159,8 +159,7 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
   const latestExportJobId = detail?.latestExportJob?.jobId ?? null;
   const latestExportJobStatus = detail?.latestExportJob?.status ?? null;
   const latestGenerationJobId = detail?.latestGenerationJob?.jobId ?? null;
-  const latestGenerationJobStatus =
-    detail?.latestGenerationJob?.status ?? null;
+  const latestGenerationJobStatus = detail?.latestGenerationJob?.status ?? null;
 
   useEffect(() => {
     const jobId =
@@ -762,12 +761,17 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
                   {latestExportJob.files.map((file) => (
                     <div
                       key={file.fileName}
-                      className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+                      className="flex min-w-0 flex-col gap-1 rounded-md border bg-background px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
                     >
-                      <span className="min-w-0 break-all font-mono text-xs">
-                        {file.fileName}
+                      <span className="min-w-0">
+                        <span className="block break-all font-mono text-xs">
+                          {file.fileName}
+                        </span>
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          {file.width} x {file.height} px
+                        </span>
                       </span>
-                      <span className="shrink-0 text-muted-foreground">
+                      <span className="shrink-0 text-xs text-muted-foreground">
                         {formatBytes(file.bytes)}
                       </span>
                     </div>

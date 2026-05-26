@@ -109,7 +109,10 @@ export async function buildPrintFiles(input: {
     }
   );
   const files = buildResults.map((result) => result.file);
-  const warnings = buildResults.flatMap((result) => result.warnings);
+  const warnings = [
+    ...buildResults.flatMap((result) => result.warnings),
+    ...aiUpscaleDimensionWarnings(files)
+  ];
 
   return {
     files,
@@ -180,12 +183,6 @@ async function buildPrintFile(input: {
   if (rendered.bytes.byteLength > TARGET_PRINT_FILE_BYTES) {
     warnings.push(
       `${preset.fileName} is above the 18 MB Etsy safety target after compression.`
-    );
-  }
-
-  if (source.aiUpscaled && !matchesExactDimensions(rendered, targetPixels)) {
-    warnings.push(
-      `${preset.fileName} was exported at ${rendered.width} x ${rendered.height} px from ${source.upscaleProvider}. No sharp enlargement was applied after AI upscaling.`
     );
   }
 
@@ -446,6 +443,29 @@ function summarizeUpscaleProviders(files: BuiltPrintFile[]) {
   const providers = [...new Set(files.map((file) => file.upscaleProvider))];
 
   return providers.length === 1 ? providers[0] : providers.join(",");
+}
+
+function aiUpscaleDimensionWarnings(files: BuiltPrintFile[]) {
+  const nativeSizeFiles = files.filter((file) => {
+    if (file.upscaleProvider === "none") {
+      return false;
+    }
+
+    return !matchesExactDimensions(file, presetKeyToPixels(file.ratioKey));
+  });
+
+  if (nativeSizeFiles.length === 0) {
+    return [];
+  }
+
+  const fileLabel =
+    nativeSizeFiles.length === 1
+      ? "1 print file"
+      : `${nativeSizeFiles.length} print files`;
+
+  return [
+    `AI upscale finished at the provider's native pixel size for ${fileLabel}. We kept the sharper AI result instead of stretching it locally. Final pixel dimensions are listed below.`
+  ];
 }
 
 function printFileNameForRenderedImage(

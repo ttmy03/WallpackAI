@@ -107,10 +107,9 @@ describe("print pack builder", () => {
     });
     expect(result.upscaleUsage?.mode).toBe("per-ratio");
     expect(result.warnings).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("No sharp enlargement was applied")
-      ])
+      expect.arrayContaining([expect.stringContaining("AI upscale finished")])
     );
+    expect(result.warnings).toHaveLength(1);
   }, 20_000);
 
   it("uses ratio-specific generated sources when they are available", async () => {
