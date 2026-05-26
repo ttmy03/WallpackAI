@@ -10,6 +10,7 @@ import type {
   UpscaleImageInput,
   UpscaleProvider
 } from "@/lib/ai/upscale-provider";
+import { readImageDimensions } from "@/lib/image/dimensions";
 
 export const RUNWARE_GPT_IMAGE_AIR_ID = "openai:gpt-image@2";
 export const RUNWARE_P_IMAGE_UPSCALE_AIR_ID = "prunaai:p-image@upscale";
@@ -221,11 +222,13 @@ export class RunwareUpscaleProvider implements UpscaleProvider {
     }
 
     const bytes = await downloadRunwareImage(output, fetcher);
-    const dimensions = dimensionsFromMegapixels(
-      input.width,
-      input.height,
-      task.targetMegapixels
-    );
+    const dimensions =
+      readImageDimensions(bytes) ??
+      dimensionsFromMegapixels(
+        input.width,
+        input.height,
+        task.targetMegapixels
+      );
 
     return {
       bytes,

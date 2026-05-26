@@ -6,6 +6,7 @@ import type { ExportPrintFileView } from "@/lib/jobs/export-types";
 import { presetKeyToPixels } from "@/lib/print/math";
 import {
   getPrintRatioPreset,
+  type PrintRatioPreset,
   type PrintRatioPresetKey
 } from "@/lib/print/presets";
 
@@ -54,6 +55,15 @@ export type PrintSourceImage = {
 type PreparedPrintSource = PrintSourceImage & {
   upscaleProvider: string;
   upscaleUsage?: Record<string, unknown>;
+  aiUpscaled: boolean;
+};
+
+type RenderedPrintImage = {
+  bytes: Buffer;
+  contentType: string;
+  width: number;
+  height: number;
+  quality: number;
 };
 
 export type BuildPrintFilesResult = {
@@ -159,16 +169,7 @@ async function buildPrintFile(input: {
     width: pixels.width,
     height: pixels.height
   };
-  const rendered =
-    printReadySourceAsRenderedJpeg(source, targetPixels) ??
-    (await renderJpegWithinTarget(
-      source.bytes,
-      {
-        width: source.width,
-        height: source.height
-      },
-      targetPixels
-    ));
+  const rendered = await renderPrintImageForSource(source, targetPixels);
 
   if (rendered.bytes.byteLength > TARGET_PRINT_FILE_BYTES) {
     warnings.push(
@@ -176,22 +177,28 @@ async function buildPrintFile(input: {
     );
   }
 
+  if (source.aiUpscaled && !matchesExactDimensions(rendered, targetPixels)) {
+    warnings.push(
+      `${preset.fileName} was exported at ${rendered.width} x ${rendered.height} px from ${source.upscaleProvider}. No sharp enlargement was applied after AI upscaling.`
+    );
+  }
+
   const file: BuiltPrintFile = {
-    fileName: preset.fileName,
+    fileName: printFileNameForRenderedImage(preset, targetPixels, rendered),
     bytes: rendered.bytes,
-    contentType: "image/jpeg",
+    contentType: rendered.contentType,
     kind: "print_jpg",
     ratioKey: input.ratioKey,
-    width: pixels.width,
-    height: pixels.height,
+    width: rendered.width,
+    height: rendered.height,
     workingWidth: source.width,
     workingHeight: source.height,
     upscaleProvider: source.upscaleProvider,
     upscaleUsage: source.upscaleUsage,
     quality: rendered.quality,
     resizeFactor:
-      Math.max(pixels.width, pixels.height) /
-      Math.max(source.width, source.height)
+      Math.max(rendered.width, rendered.height) /
+      Math.max(sourceImage.width, sourceImage.height)
   };
 
   await input.onFileBuilt?.(file);
@@ -253,7 +260,8 @@ async function prepareSourceForPrintFile(input: {
       mimeType: ratioSource.mimeType,
       width: ratioSource.width,
       height: ratioSource.height,
-      upscaleProvider: "none"
+      upscaleProvider: "none",
+      aiUpscaled: false
     };
   }
 
@@ -266,18 +274,18 @@ async function prepareSourceForPrintFile(input: {
     targetWidth: input.targetWidth,
     targetHeight: input.targetHeight
   });
-  const metadata = await sharp(Buffer.from(upscaled.bytes)).metadata();
 
   return {
     bytes: Buffer.from(upscaled.bytes),
     mimeType: upscaled.mimeType,
-    width: metadata.width ?? upscaled.width,
-    height: metadata.height ?? upscaled.height,
+    width: upscaled.width,
+    height: upscaled.height,
     upscaleProvider:
       typeof upscaled.usage?.model === "string"
         ? upscaled.usage.model
         : "upscale",
-    upscaleUsage: upscaled.usage
+    upscaleUsage: upscaled.usage,
+    aiUpscaled: true
   };
 }
 
@@ -298,13 +306,48 @@ async function prepareSourceForProviderUpscale(input: {
     };
   }
 
-  return renderRatioSourceImage(input);
+  throw new Error(
+    "Create Etsy Pack needs a ratio-specific generated source before AI upscaling. Regenerate this artwork so every selected ratio has its own source image."
+  );
+}
+
+async function renderPrintImageForSource(
+  source: PreparedPrintSource,
+  targetPixels: { width: number; height: number }
+): Promise<RenderedPrintImage> {
+  if (source.aiUpscaled) {
+    return providerUpscaledSourceAsPrintImage(source);
+  }
+
+  return (
+    printReadySourceAsRenderedJpeg(source, targetPixels) ??
+    (await renderJpegWithinTarget(
+      source.bytes,
+      {
+        width: source.width,
+        height: source.height
+      },
+      targetPixels
+    ))
+  );
+}
+
+function providerUpscaledSourceAsPrintImage(
+  source: PreparedPrintSource
+): RenderedPrintImage {
+  return {
+    bytes: source.bytes,
+    contentType: contentTypeForMimeType(source.mimeType),
+    width: source.width,
+    height: source.height,
+    quality: numberFromUsage(source.upscaleUsage, "outputQuality") ?? 95
+  };
 }
 
 function printReadySourceAsRenderedJpeg(
   source: PreparedPrintSource,
   targetPixels: { width: number; height: number }
-) {
+): RenderedPrintImage | null {
   if (
     source.mimeType !== "image/jpeg" ||
     source.width !== targetPixels.width ||
@@ -316,6 +359,9 @@ function printReadySourceAsRenderedJpeg(
 
   return {
     bytes: source.bytes,
+    contentType: "image/jpeg",
+    width: targetPixels.width,
+    height: targetPixels.height,
     quality: 95
   };
 }
@@ -392,6 +438,63 @@ function summarizeUpscaleProviders(files: BuiltPrintFile[]) {
   return providers.length === 1 ? providers[0] : providers.join(",");
 }
 
+function printFileNameForRenderedImage(
+  preset: PrintRatioPreset,
+  targetPixels: { width: number; height: number },
+  rendered: { contentType: string; width: number; height: number }
+) {
+  if (
+    rendered.contentType === "image/jpeg" &&
+    matchesExactDimensions(rendered, targetPixels)
+  ) {
+    return preset.fileName;
+  }
+
+  return `${preset.key}_ai-upscaled_${rendered.width}x${rendered.height}px.${extensionForContentType(rendered.contentType)}`;
+}
+
+function matchesExactDimensions(
+  image: { width: number; height: number },
+  pixels: { width: number; height: number }
+) {
+  return image.width === pixels.width && image.height === pixels.height;
+}
+
+function contentTypeForMimeType(mimeType: PrintSourceImage["mimeType"]) {
+  switch (mimeType) {
+    case "image/png":
+      return "image/png";
+    case "image/webp":
+      return "image/webp";
+    case "image/jpeg":
+    default:
+      return "image/jpeg";
+  }
+}
+
+function extensionForContentType(contentType: string) {
+  if (contentType === "image/png") {
+    return "png";
+  }
+
+  if (contentType === "image/webp") {
+    return "webp";
+  }
+
+  return "jpg";
+}
+
+function numberFromUsage(
+  usage: Record<string, unknown> | undefined,
+  key: string
+) {
+  const value = usage?.[key];
+
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
 function maxPrintFileDimension(
   files: BuiltPrintFile[],
   key: "workingWidth" | "workingHeight",
@@ -446,7 +549,7 @@ async function renderJpegWithinTarget(
   sourcePixels: { width: number; height: number },
   targetPixels: { width: number; height: number }
 ) {
-  let best: { bytes: Buffer; quality: number } | null = null;
+  let best: RenderedPrintImage | null = null;
   const frame = fitImageWithinCanvas(sourcePixels, targetPixels);
 
   if (fillsTargetCanvas(frame, targetPixels)) {
@@ -487,7 +590,7 @@ async function renderJpegWithinTarget(
       .jpeg(printJpegOptions(quality, targetPixels))
       .toBuffer();
 
-    best = { bytes, quality };
+    best = renderedJpegImage(bytes, quality, targetPixels);
 
     if (bytes.byteLength <= TARGET_PRINT_FILE_BYTES) {
       break;
@@ -517,7 +620,7 @@ async function renderDirectJpegResize(
   sourceBytes: Buffer,
   targetPixels: { width: number; height: number }
 ) {
-  let best: { bytes: Buffer; quality: number } | null = null;
+  let best: RenderedPrintImage | null = null;
 
   for (const quality of JPEG_QUALITY_STEPS) {
     const bytes = await sharp(sourceBytes)
@@ -534,7 +637,7 @@ async function renderDirectJpegResize(
       .jpeg(printJpegOptions(quality, targetPixels))
       .toBuffer();
 
-    best = { bytes, quality };
+    best = renderedJpegImage(bytes, quality, targetPixels);
 
     if (bytes.byteLength <= TARGET_PRINT_FILE_BYTES) {
       break;
@@ -546,6 +649,20 @@ async function renderDirectJpegResize(
   }
 
   return best;
+}
+
+function renderedJpegImage(
+  bytes: Buffer,
+  quality: number,
+  pixels: { width: number; height: number }
+): RenderedPrintImage {
+  return {
+    bytes,
+    contentType: "image/jpeg",
+    width: pixels.width,
+    height: pixels.height,
+    quality
+  };
 }
 
 function printJpegOptions(

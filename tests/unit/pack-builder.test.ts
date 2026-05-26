@@ -17,6 +17,8 @@ class RecordingUpscaleProvider implements UpscaleProvider {
 
     return {
       ...input,
+      width: input.width * 2,
+      height: input.height * 2,
       providerRequestId: `upscale-${callNumber}`,
       usage: {
         model: "recording-upscale",
@@ -29,11 +31,17 @@ class RecordingUpscaleProvider implements UpscaleProvider {
 }
 
 describe("print pack builder", () => {
-  it("upscales each requested print dimension independently", async () => {
-    const [source] = await new MockImageProvider().generate({
+  it("uses AI-upscaled output directly without sharp-enlarging to print dimensions", async () => {
+    const provider = new MockImageProvider();
+    const [source] = await provider.generate({
       prompt: "minimalist mountain landscape",
       count: 1,
       aspectRatio: "2x3"
+    });
+    const [ratioSource] = await provider.generate({
+      prompt: "minimalist mountain landscape",
+      count: 1,
+      aspectRatio: "3x4"
     });
     const upscaleProvider = new RecordingUpscaleProvider();
     const result = await buildPrintFiles({
@@ -42,6 +50,14 @@ describe("print pack builder", () => {
       sourceWidth: source.width,
       sourceHeight: source.height,
       ratioKeys: ["2x3", "3x4"],
+      ratioSources: {
+        "3x4": {
+          bytes: Buffer.from(ratioSource.bytes),
+          mimeType: ratioSource.mimeType,
+          width: ratioSource.width,
+          height: ratioSource.height
+        }
+      },
       upscaleProvider
     });
 
@@ -72,6 +88,8 @@ describe("print pack builder", () => {
       targetHeight: 10800
     });
     expect(threeByFourCall).toMatchObject({
+      width: 900,
+      height: 1200,
       targetWidth: 5400,
       targetHeight: 7200
     });
@@ -79,11 +97,16 @@ describe("print pack builder", () => {
     expect(result.files.map((file) => file.ratioKey)).toEqual(["2x3", "3x4"]);
     expect(result.files[0]).toMatchObject({
       ratioKey: "2x3",
-      width: 7200,
-      height: 10800,
+      width: 1728,
+      height: 2592,
       upscaleProvider: "recording-upscale"
     });
     expect(result.upscaleUsage?.mode).toBe("per-ratio");
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("No sharp enlargement was applied")
+      ])
+    );
   }, 20_000);
 
   it("uses ratio-specific generated sources when they are available", async () => {
@@ -156,6 +179,27 @@ describe("print pack builder", () => {
       targetWidth: 5400,
       targetHeight: 7200
     });
+  }, 20_000);
+
+  it("does not sharp-reframe a mismatched source before AI upscaling", async () => {
+    const [source] = await new MockImageProvider().generate({
+      prompt: "minimalist mountain landscape",
+      count: 1,
+      aspectRatio: "2x3"
+    });
+    const upscaleProvider = new RecordingUpscaleProvider();
+
+    await expect(
+      buildPrintFiles({
+        sourceBytes: Buffer.from(source.bytes),
+        sourceMimeType: source.mimeType,
+        sourceWidth: source.width,
+        sourceHeight: source.height,
+        ratioKeys: ["3x4"],
+        upscaleProvider
+      })
+    ).rejects.toThrow(/ratio-specific generated source/);
+    expect(upscaleProvider.calls).toHaveLength(0);
   }, 20_000);
 
   it("reports each built print file for export job progress", async () => {

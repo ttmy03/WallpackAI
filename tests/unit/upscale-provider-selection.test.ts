@@ -10,9 +10,19 @@ describe("upscale provider selection", () => {
     vi.resetModules();
   });
 
-  it("defaults to sharp-only exports without AI upscaling", async () => {
+  it("defaults Create Etsy Pack exports to Runware P-Image Upscale", async () => {
     process.env.IMAGE_PROVIDER = "runware";
     delete process.env.UPSCALE_PROVIDER;
+
+    const { getUpscaleProvider } = await import("@/lib/ai/upscale");
+    const { RunwareUpscaleProvider } =
+      await import("@/lib/ai/providers/runware");
+
+    expect(getUpscaleProvider()).toBeInstanceOf(RunwareUpscaleProvider);
+  });
+
+  it("allows explicitly opting out to sharp-only exports", async () => {
+    process.env.UPSCALE_PROVIDER = "none";
 
     const { getUpscaleProvider } = await import("@/lib/ai/upscale");
 
@@ -46,9 +56,8 @@ describe("upscale provider selection", () => {
     process.env.UPSCALE_PROVIDER = "runware";
 
     const { getUpscaleProvider } = await import("@/lib/ai/upscale");
-    const { RunwareUpscaleProvider } = await import(
-      "@/lib/ai/providers/runware"
-    );
+    const { RunwareUpscaleProvider } =
+      await import("@/lib/ai/providers/runware");
 
     expect(getUpscaleProvider()).toBeInstanceOf(RunwareUpscaleProvider);
   });

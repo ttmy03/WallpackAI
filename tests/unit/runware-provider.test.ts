@@ -6,6 +6,7 @@ import {
   RUNWARE_GPT_IMAGE_AIR_ID,
   RUNWARE_P_IMAGE_UPSCALE_AIR_ID,
   RunwareImageProvider,
+  RunwareUpscaleProvider,
   resolveRunwareDimensions
 } from "@/lib/ai/providers/runware";
 
@@ -118,6 +119,57 @@ describe("Runware image provider", () => {
     expect(task).not.toHaveProperty("negativePrompt");
   });
 
+  it("returns actual P-Image output dimensions from downloaded bytes", async () => {
+    const requests: unknown[] = [];
+    const provider = new RunwareUpscaleProvider({
+      apiKey: "test-key",
+      fetcher: async (input, init) => {
+        if (
+          typeof input === "string" &&
+          input.startsWith("https://image.test")
+        ) {
+          return new Response(testPngBytes(1234, 1851));
+        }
+
+        const body = JSON.parse(String(init?.body)) as unknown[];
+        requests.push(body[0]);
+
+        return Response.json({
+          data: [
+            {
+              taskType: "upscale",
+              taskUUID: "upscale-task",
+              imageUUID: "upscaled-image",
+              imageURL: "https://image.test/upscaled.png",
+              cost: 0.01
+            }
+          ]
+        });
+      }
+    });
+
+    const image = await provider.upscale({
+      bytes: testPngBytes(100, 150),
+      mimeType: "image/png",
+      width: 100,
+      height: 150,
+      targetWidth: 7200,
+      targetHeight: 10800
+    });
+
+    expect(requests[0]).toMatchObject({
+      taskType: "upscale",
+      model: RUNWARE_P_IMAGE_UPSCALE_AIR_ID,
+      targetMegapixels: 8
+    });
+    expect(image).toMatchObject({
+      mimeType: "image/png",
+      width: 1234,
+      height: 1851,
+      providerRequestId: "upscaled-image"
+    });
+  });
+
   it("runs GPT Image 2 generation without P-Image Upscale", async () => {
     const requests: unknown[] = [];
     const provider = new RunwareImageProvider({
@@ -196,3 +248,22 @@ describe("Runware image provider", () => {
     );
   });
 });
+
+function testPngBytes(width: number, height: number) {
+  const bytes = new Uint8Array(24);
+
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+  bytes.set([0x00, 0x00, 0x00, 0x0d], 8);
+  bytes.set([0x49, 0x48, 0x44, 0x52], 12);
+  writeUint32Be(bytes, width, 16);
+  writeUint32Be(bytes, height, 20);
+
+  return bytes;
+}
+
+function writeUint32Be(bytes: Uint8Array, value: number, offset: number) {
+  bytes[offset] = (value >>> 24) & 0xff;
+  bytes[offset + 1] = (value >>> 16) & 0xff;
+  bytes[offset + 2] = (value >>> 8) & 0xff;
+  bytes[offset + 3] = value & 0xff;
+}
