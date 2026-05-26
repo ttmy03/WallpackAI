@@ -522,7 +522,7 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
               !selectedArtwork
                 ? "Generate and select artwork before exporting."
                 : detail.plan.canExportEtsyPack
-                  ? `Create Etsy upload ZIP files for ${ETSY_PACK_EXPORT_CREDIT_COST} credits.`
+                  ? "Create Etsy upload ZIP files for this project."
                   : "Open upgrade options for Etsy pack exports."
             }
           >
@@ -531,10 +531,11 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
             ) : (
               <Sparkles />
             )}
-            Create Etsy Pack ({ETSY_PACK_EXPORT_CREDIT_COST} credits)
+            Create Etsy Pack
           </Button>
         </div>
       </div>
+      <CreditUsageInfo />
 
       {action.message ? (
         <div className="mt-6 rounded-md border bg-secondary px-4 py-3 text-sm">
@@ -563,17 +564,17 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
                 type="button"
                 variant="outline"
                 size="sm"
-                className="w-full"
+                className="h-auto min-h-9 w-full whitespace-normal px-2 py-2 text-center leading-tight"
                 disabled={!canGenerateVariant}
                 onClick={() => void startVariantGeneration()}
-                title={`Generate one additional 5-ratio artwork variant for ${GENERATION_PREVIEW_CREDIT_COST} credits.`}
+                title="Generate one additional 5-ratio artwork variant."
               >
                 {action.pending === "generate" || generationRunning ? (
                   <Loader2 className="animate-spin" />
                 ) : (
                   <Sparkles />
                 )}
-                Add 5-Ratio Variant ({GENERATION_PREVIEW_CREDIT_COST} credits)
+                <span className="min-w-0">Add 5-Ratio Variant</span>
               </Button>
             </div>
           </CardHeader>
@@ -783,6 +784,27 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
         </Card>
       </div>
     </main>
+  );
+}
+
+function CreditUsageInfo() {
+  return (
+    <div className="mt-4 rounded-md border bg-secondary/40 px-4 py-3 text-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="font-medium">Credit usage</p>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="secondary">
+            5-ratio variant: {GENERATION_PREVIEW_CREDIT_COST} credits
+          </Badge>
+          <Badge variant="secondary">
+            Etsy pack export: {ETSY_PACK_EXPORT_CREDIT_COST} credits
+          </Badge>
+        </div>
+      </div>
+      <p className="mt-2 text-muted-foreground">
+        Credits are reserved when work starts and refunded on technical failure.
+      </p>
+    </div>
   );
 }
 
