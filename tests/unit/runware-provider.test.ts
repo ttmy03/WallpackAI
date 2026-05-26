@@ -30,6 +30,7 @@ describe("Runware image provider", () => {
     expect(task.width).toBe(1664);
     expect(task.height).toBe(2496);
     expect(task.safety).toBe("fast");
+    expect(task.deliveryMethod).toBe("async");
     expect(task).not.toHaveProperty("providerSettings");
     expect(task).not.toHaveProperty("negativePrompt");
     expect(task.positivePrompt).toBe("printable art file");
@@ -140,6 +141,7 @@ describe("Runware image provider", () => {
     expect(task.model).toBe("prunaai:p-image@upscale");
     expect(task.inputs.image).toBe("https://example.test/generated.jpg");
     expect(task.targetMegapixels).toBe(8);
+    expect(task.deliveryMethod).toBe("async");
     expect(task.settings).toEqual({ enhanceDetails: true, realism: true });
     expect(task).not.toHaveProperty("positivePrompt");
     expect(task).not.toHaveProperty("negativePrompt");
@@ -157,14 +159,16 @@ describe("Runware image provider", () => {
           return new Response(testPngBytes(1234, 1851));
         }
 
-        const body = JSON.parse(String(init?.body)) as unknown[];
+        const body = JSON.parse(String(init?.body)) as Array<{
+          taskUUID?: string;
+        }>;
         requests.push(body[0]);
 
         return Response.json({
           data: [
             {
               taskType: "upscale",
-              taskUUID: "upscale-task",
+              taskUUID: body[0]?.taskUUID,
               imageUUID: "upscaled-image",
               imageURL: "https://image.test/upscaled.png",
               cost: 0.01
@@ -209,6 +213,7 @@ describe("Runware image provider", () => {
         }
 
         const body = JSON.parse(String(init?.body)) as Array<{
+          taskUUID?: string;
           inputs?: { image?: string };
         }>;
         requests.push(body[0]);
@@ -217,7 +222,7 @@ describe("Runware image provider", () => {
           data: [
             {
               taskType: "upscale",
-              taskUUID: "upscale-task",
+              taskUUID: body[0]?.taskUUID,
               imageUUID: "upscaled-image",
               imageURL: "https://image.test/upscaled.png",
               cost: 0.01
@@ -255,6 +260,7 @@ describe("Runware image provider", () => {
         }
 
         const body = JSON.parse(String(init?.body)) as Array<{
+          taskUUID?: string;
           inputs?: { image?: string };
         }>;
         requests.push(body[0]);
@@ -263,7 +269,7 @@ describe("Runware image provider", () => {
           data: [
             {
               taskType: "upscale",
-              taskUUID: "upscale-task",
+              taskUUID: body[0]?.taskUUID,
               imageUUID: "upscaled-image",
               imageURL: "https://image.test/upscaled.png",
               cost: 0.01
@@ -319,14 +325,16 @@ describe("Runware image provider", () => {
           return new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]));
         }
 
-        const body = JSON.parse(String(init?.body)) as unknown[];
+        const body = JSON.parse(String(init?.body)) as Array<{
+          taskUUID?: string;
+        }>;
         requests.push(body[0]);
 
         return Response.json({
           data: [
             {
               taskType: "imageInference",
-              taskUUID: "generation-task",
+              taskUUID: body[0]?.taskUUID,
               imageUUID: "generated-image",
               imageURL: "https://image.test/generated.jpg",
               cost: 0.1
@@ -346,14 +354,225 @@ describe("Runware image provider", () => {
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({
       taskType: "imageInference",
-      model: RUNWARE_GPT_IMAGE_AIR_ID
+      model: RUNWARE_GPT_IMAGE_AIR_ID,
+      deliveryMethod: "async"
     });
     expect(images[0]?.providerRequestId).toBe("generated-image");
-    expect(images[0]?.usage?.generationTaskUUID).toBe("generation-task");
+    expect(images[0]?.usage?.generationTaskUUID).toBe(
+      (requests[0] as { taskUUID?: string }).taskUUID
+    );
     expect(images[0]?.usage).not.toHaveProperty("upscaleTaskUUID");
     expect(images[0]?.usage).not.toHaveProperty("upscaleModel");
     expect(images[0]?.width).toBe(1664);
     expect(images[0]?.height).toBe(2496);
+  });
+
+  it("polls Runware for async GPT Image 2 results", async () => {
+    const requests: Array<{
+      taskType?: string;
+      taskUUID?: string;
+      deliveryMethod?: string;
+    }> = [];
+    const provider = new RunwareImageProvider({
+      apiKey: "test-key",
+      pollIntervalMs: 1,
+      pollMaxIntervalMs: 1,
+      pollTimeoutMs: 100,
+      fetcher: async (input, init) => {
+        if (
+          typeof input === "string" &&
+          input.startsWith("https://image.test")
+        ) {
+          return new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]));
+        }
+
+        const [task] = JSON.parse(String(init?.body)) as Array<{
+          taskType?: string;
+          taskUUID?: string;
+          deliveryMethod?: string;
+        }>;
+
+        requests.push(task);
+
+        if (task.taskType === "getResponse") {
+          return Response.json({
+            data: [
+              {
+                taskType: "imageInference",
+                taskUUID: task.taskUUID,
+                status: "success",
+                imageUUID: "generated-image-1",
+                imageURL: "https://image.test/generated-1.jpg",
+                cost: 0.1
+              },
+              {
+                taskType: "imageInference",
+                taskUUID: task.taskUUID,
+                status: "success",
+                imageUUID: "generated-image-2",
+                imageURL: "https://image.test/generated-2.jpg",
+                cost: 0.1
+              }
+            ]
+          });
+        }
+
+        return Response.json({
+          data: [
+            {
+              taskType: "imageInference",
+              taskUUID: task.taskUUID,
+              status: "processing",
+              progress: 12
+            }
+          ]
+        });
+      }
+    });
+
+    const images = await provider.generate({
+      prompt: "minimalist mountain landscape",
+      count: 2,
+      aspectRatio: "2x3"
+    });
+
+    expect(requests.map((request) => request.taskType)).toEqual([
+      "imageInference",
+      "getResponse"
+    ]);
+    expect(requests[0]?.deliveryMethod).toBe("async");
+    expect(images.map((image) => image.providerRequestId)).toEqual([
+      "generated-image-1",
+      "generated-image-2"
+    ]);
+  });
+
+  it("polls Runware after a timed-out image request returns HTTP 504", async () => {
+    const requests: Array<{ taskType?: string; taskUUID?: string }> = [];
+    const provider = new RunwareImageProvider({
+      apiKey: "test-key",
+      pollIntervalMs: 1,
+      pollMaxIntervalMs: 1,
+      pollTimeoutMs: 100,
+      fetcher: async (input, init) => {
+        if (
+          typeof input === "string" &&
+          input.startsWith("https://image.test")
+        ) {
+          return new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]));
+        }
+
+        const [task] = JSON.parse(String(init?.body)) as Array<{
+          taskType?: string;
+          taskUUID?: string;
+        }>;
+
+        requests.push(task);
+
+        if (task.taskType === "getResponse") {
+          return Response.json({
+            data: [
+              {
+                taskType: "imageInference",
+                taskUUID: task.taskUUID,
+                status: "success",
+                imageUUID: "generated-after-timeout",
+                imageURL: "https://image.test/generated.jpg",
+                cost: 0.1
+              }
+            ]
+          });
+        }
+
+        return new Response(
+          "Task processing timeout. Results were not received within the expected time window.",
+          { status: 504 }
+        );
+      }
+    });
+
+    const images = await provider.generate({
+      prompt: "minimalist mountain landscape",
+      count: 1,
+      aspectRatio: "2x3"
+    });
+
+    expect(requests.map((request) => request.taskType)).toEqual([
+      "imageInference",
+      "getResponse"
+    ]);
+    expect(images[0]?.providerRequestId).toBe("generated-after-timeout");
+  });
+
+  it("polls Runware for async P-Image upscale results", async () => {
+    const requests: Array<{
+      taskType?: string;
+      taskUUID?: string;
+      deliveryMethod?: string;
+    }> = [];
+    const provider = new RunwareUpscaleProvider({
+      apiKey: "test-key",
+      pollIntervalMs: 1,
+      pollMaxIntervalMs: 1,
+      pollTimeoutMs: 100,
+      fetcher: async (input, init) => {
+        if (
+          typeof input === "string" &&
+          input.startsWith("https://image.test")
+        ) {
+          return new Response(testPngBytes(1234, 1851));
+        }
+
+        const [task] = JSON.parse(String(init?.body)) as Array<{
+          taskType?: string;
+          taskUUID?: string;
+          deliveryMethod?: string;
+        }>;
+
+        requests.push(task);
+
+        if (task.taskType === "getResponse") {
+          return Response.json({
+            data: [
+              {
+                taskType: "upscale",
+                taskUUID: task.taskUUID,
+                status: "success",
+                imageUUID: "upscaled-image",
+                imageURL: "https://image.test/upscaled.png",
+                cost: 0.01
+              }
+            ]
+          });
+        }
+
+        return Response.json({
+          data: [
+            {
+              taskType: "upscale",
+              taskUUID: task.taskUUID,
+              status: "processing"
+            }
+          ]
+        });
+      }
+    });
+
+    const image = await provider.upscale({
+      bytes: testPngBytes(100, 150),
+      mimeType: "image/png",
+      width: 100,
+      height: 150,
+      targetWidth: 7200,
+      targetHeight: 10800
+    });
+
+    expect(requests.map((request) => request.taskType)).toEqual([
+      "upscale",
+      "getResponse"
+    ]);
+    expect(requests[0]?.deliveryMethod).toBe("async");
+    expect(image.providerRequestId).toBe("upscaled-image");
   });
 
   it("surfaces Runware HTTP error details without hiding them behind the status", async () => {

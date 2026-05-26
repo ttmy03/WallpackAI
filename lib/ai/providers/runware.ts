@@ -18,6 +18,9 @@ export const RUNWARE_GPT_IMAGE_AIR_ID = "openai:gpt-image@2";
 export const RUNWARE_P_IMAGE_UPSCALE_AIR_ID = "prunaai:p-image@upscale";
 export const RUNWARE_P_IMAGE_UPSCALE_MAX_INPUT_PIXELS = 4_194_304;
 export const RUNWARE_API_URL = "https://api.runware.ai/v1";
+const DEFAULT_RUNWARE_POLL_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_RUNWARE_POLL_INTERVAL_MS = 1_500;
+const DEFAULT_RUNWARE_POLL_MAX_INTERVAL_MS = 7_500;
 
 type RunwareImageTask = {
   taskType: "imageInference";
@@ -31,6 +34,7 @@ type RunwareImageTask = {
   outputType: "URL";
   outputFormat: "JPG" | "PNG" | "WEBP";
   outputQuality: number;
+  deliveryMethod: RunwareDeliveryMethod;
   includeCost: boolean;
   safety: "none" | "fast";
 };
@@ -46,7 +50,7 @@ type RunwareUpscaleTask = {
   outputType: "URL";
   outputFormat: "JPG" | "PNG" | "WEBP";
   outputQuality: number;
-  deliveryMethod: "sync";
+  deliveryMethod: RunwareDeliveryMethod;
   includeCost: boolean;
   settings: {
     enhanceDetails: boolean;
@@ -54,24 +58,55 @@ type RunwareUpscaleTask = {
   };
 };
 
+type RunwareGetResponseTask = {
+  taskType: "getResponse";
+  taskUUID: string;
+};
+
+type RunwareTask =
+  | RunwareImageTask
+  | RunwareUpscaleTask
+  | RunwareGetResponseTask;
+
+type RunwareDeliveryMethod = "sync" | "async";
+
+type RunwareTaskStatus = "processing" | "success" | "error";
+
+type RunwareImageOutput = {
+  taskType: "imageInference" | "upscale" | "getResponse";
+  taskUUID: string;
+  status?: RunwareTaskStatus;
+  progress?: number;
+  imageUUID?: string;
+  imageURL?: string;
+  imageBase64Data?: string;
+  imageDataURI?: string;
+  seed?: number;
+  NSFWContent?: boolean;
+  cost?: number;
+};
+
 type RunwareImageResponse = {
-  data?: Array<{
-    taskType: "imageInference" | "upscale";
-    taskUUID: string;
-    imageUUID?: string;
-    imageURL?: string;
-    imageBase64Data?: string;
-    imageDataURI?: string;
-    seed?: number;
-    NSFWContent?: boolean;
-    cost?: number;
-  }>;
+  data?: RunwareImageOutput[];
   errors?: Array<{
     code?: string;
+    status?: RunwareTaskStatus;
     message?: string;
     parameter?: string;
     taskUUID?: string;
   }>;
+};
+
+type RunwareRequestContext = {
+  apiUrl: string;
+  apiKey: string;
+  fetcher: typeof fetch;
+  taskUUID: string;
+  expectedResults: number;
+  requestKind: "image" | "upscale";
+  pollTimeoutMs?: number;
+  pollIntervalMs?: number;
+  pollMaxIntervalMs?: number;
 };
 
 export class RunwareImageProvider implements ImageProvider {
@@ -81,6 +116,9 @@ export class RunwareImageProvider implements ImageProvider {
       apiUrl?: string;
       airId?: string;
       fetcher?: typeof fetch;
+      pollTimeoutMs?: number;
+      pollIntervalMs?: number;
+      pollMaxIntervalMs?: number;
     } = {}
   ) {}
 
@@ -100,32 +138,18 @@ export class RunwareImageProvider implements ImageProvider {
         RUNWARE_GPT_IMAGE_AIR_ID
     });
     const fetcher = this.options.fetcher ?? fetch;
-    const response = await fetcher(
-      this.options.apiUrl ?? process.env.RUNWARE_API_URL ?? RUNWARE_API_URL,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`
-        },
-        body: JSON.stringify([task])
-      }
-    );
-
-    if (!response.ok) {
-      const message = await readRunwareHttpError(response);
-      throw new Error(
-        `Runware image request failed with HTTP ${response.status}: ${message}`
-      );
-    }
-
-    const json = (await response.json()) as RunwareImageResponse;
-
-    if (json.errors?.length) {
-      throw new Error(formatRunwareErrors(json.errors));
-    }
-
-    const outputs = json.data ?? [];
+    const outputs = await requestRunwareTaskResults([task], {
+      apiUrl:
+        this.options.apiUrl ?? process.env.RUNWARE_API_URL ?? RUNWARE_API_URL,
+      apiKey,
+      fetcher,
+      taskUUID: task.taskUUID,
+      expectedResults: task.numberResults,
+      requestKind: "image",
+      pollTimeoutMs: this.options.pollTimeoutMs,
+      pollIntervalMs: this.options.pollIntervalMs,
+      pollMaxIntervalMs: this.options.pollMaxIntervalMs
+    });
 
     if (outputs.length === 0) {
       throw new Error("Runware did not return any generated images");
@@ -165,6 +189,9 @@ export class RunwareUpscaleProvider implements UpscaleProvider {
       apiUrl?: string;
       airId?: string;
       fetcher?: typeof fetch;
+      pollTimeoutMs?: number;
+      pollIntervalMs?: number;
+      pollMaxIntervalMs?: number;
     } = {}
   ) {}
 
@@ -194,32 +221,18 @@ export class RunwareUpscaleProvider implements UpscaleProvider {
       }
     );
     const fetcher = this.options.fetcher ?? fetch;
-    const response = await fetcher(
-      this.options.apiUrl ?? process.env.RUNWARE_API_URL ?? RUNWARE_API_URL,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`
-        },
-        body: JSON.stringify([task])
-      }
-    );
-
-    if (!response.ok) {
-      const message = await readRunwareHttpError(response);
-      throw new Error(
-        `Runware upscale request failed with HTTP ${response.status}: ${message}`
-      );
-    }
-
-    const json = (await response.json()) as RunwareImageResponse;
-
-    if (json.errors?.length) {
-      throw new Error(formatRunwareErrors(json.errors));
-    }
-
-    const output = json.data?.[0];
+    const [output] = await requestRunwareTaskResults([task], {
+      apiUrl:
+        this.options.apiUrl ?? process.env.RUNWARE_API_URL ?? RUNWARE_API_URL,
+      apiKey,
+      fetcher,
+      taskUUID: task.taskUUID,
+      expectedResults: 1,
+      requestKind: "upscale",
+      pollTimeoutMs: this.options.pollTimeoutMs,
+      pollIntervalMs: this.options.pollIntervalMs,
+      pollMaxIntervalMs: this.options.pollMaxIntervalMs
+    });
 
     if (!output) {
       throw new Error("Runware upscale did not return an image");
@@ -260,7 +273,11 @@ export class RunwareUpscaleProvider implements UpscaleProvider {
 
 export function buildRunwareImageTask(
   input: GenerateImageInput,
-  options: { airId?: string; taskUUID?: string } = {}
+  options: {
+    airId?: string;
+    taskUUID?: string;
+    deliveryMethod?: RunwareDeliveryMethod;
+  } = {}
 ): RunwareImageTask {
   const dimensions = resolveRunwareDimensions(input);
   const numberResults = clampInteger(input.count, 1, 20);
@@ -278,6 +295,7 @@ export function buildRunwareImageTask(
     outputType: "URL",
     outputFormat: "JPG",
     outputQuality: 95,
+    deliveryMethod: options.deliveryMethod ?? "async",
     includeCost: true,
     safety: "fast"
   };
@@ -305,6 +323,7 @@ export function buildRunwareUpscaleTask(
     airId?: string;
     taskUUID?: string;
     targetMegapixels?: number;
+    deliveryMethod?: RunwareDeliveryMethod;
   } = {}
 ): RunwareUpscaleTask {
   return {
@@ -320,7 +339,7 @@ export function buildRunwareUpscaleTask(
     outputType: "URL",
     outputFormat: input.outputFormat ?? "JPG",
     outputQuality: 95,
-    deliveryMethod: "sync",
+    deliveryMethod: options.deliveryMethod ?? "async",
     includeCost: true,
     settings: {
       enhanceDetails: true,
@@ -502,6 +521,195 @@ function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value
   );
+}
+
+async function requestRunwareTaskResults(
+  tasks: RunwareTask[],
+  context: RunwareRequestContext
+) {
+  const response = await postRunwareTasks(tasks, context);
+
+  if (!response.ok) {
+    const message = await readRunwareHttpError(response);
+
+    if (response.status === 504) {
+      try {
+        return await pollRunwareTaskResults(context);
+      } catch (error) {
+        const pollMessage =
+          error instanceof Error ? error.message : "Polling failed.";
+
+        throw new Error(
+          `Runware ${context.requestKind} request failed with HTTP 504: ${message}. Polling task ${context.taskUUID} did not return completed results: ${pollMessage}`
+        );
+      }
+    }
+
+    throw new Error(
+      `Runware ${context.requestKind} request failed with HTTP ${response.status}: ${message}`
+    );
+  }
+
+  const json = (await response.json()) as RunwareImageResponse;
+  const outputs = completedRunwareOutputs(json, context);
+
+  if (outputs.length >= context.expectedResults) {
+    return outputs.slice(0, context.expectedResults);
+  }
+
+  if (json.errors?.length && !hasProcessingRunwareOutput(json, context)) {
+    throw new Error(formatRunwareErrors(json.errors));
+  }
+
+  if (tasks.some(isAsyncRunwareTask)) {
+    return pollRunwareTaskResults(context);
+  }
+
+  return outputs;
+}
+
+async function pollRunwareTaskResults(context: RunwareRequestContext) {
+  const timeoutMs = readRunwareDurationMs(
+    context.pollTimeoutMs,
+    "RUNWARE_POLL_TIMEOUT_MS",
+    DEFAULT_RUNWARE_POLL_TIMEOUT_MS
+  );
+  const maxIntervalMs = readRunwareDurationMs(
+    context.pollMaxIntervalMs,
+    "RUNWARE_POLL_MAX_INTERVAL_MS",
+    DEFAULT_RUNWARE_POLL_MAX_INTERVAL_MS
+  );
+  let intervalMs = readRunwareDurationMs(
+    context.pollIntervalMs,
+    "RUNWARE_POLL_INTERVAL_MS",
+    DEFAULT_RUNWARE_POLL_INTERVAL_MS
+  );
+  const startedAt = Date.now();
+  let latestResponse: RunwareImageResponse | null = null;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    await delay(intervalMs);
+
+    const response = await postRunwareTasks(
+      [{ taskType: "getResponse", taskUUID: context.taskUUID }],
+      context
+    );
+
+    if (!response.ok) {
+      const message = await readRunwareHttpError(response);
+
+      if (isRetryableRunwareHttpStatus(response.status)) {
+        intervalMs = nextRunwarePollInterval(intervalMs, maxIntervalMs);
+        continue;
+      }
+
+      throw new Error(
+        `Runware ${context.requestKind} polling failed with HTTP ${response.status}: ${message}`
+      );
+    }
+
+    latestResponse = (await response.json()) as RunwareImageResponse;
+
+    const outputs = completedRunwareOutputs(latestResponse, context);
+
+    if (outputs.length >= context.expectedResults) {
+      return outputs.slice(0, context.expectedResults);
+    }
+
+    if (
+      latestResponse.errors?.length &&
+      !hasProcessingRunwareOutput(latestResponse, context)
+    ) {
+      throw new Error(formatRunwareErrors(latestResponse.errors));
+    }
+
+    intervalMs = nextRunwarePollInterval(intervalMs, maxIntervalMs);
+  }
+
+  const outputs = latestResponse
+    ? completedRunwareOutputs(latestResponse, context)
+    : [];
+
+  throw new Error(
+    `Runware ${context.requestKind} task ${context.taskUUID} did not finish within ${Math.round(
+      timeoutMs / 1000
+    )} seconds (${outputs.length}/${context.expectedResults} results ready).`
+  );
+}
+
+async function postRunwareTasks(
+  tasks: RunwareTask[],
+  context: RunwareRequestContext
+) {
+  return context.fetcher(context.apiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${context.apiKey}`
+    },
+    body: JSON.stringify(tasks)
+  });
+}
+
+function completedRunwareOutputs(
+  response: RunwareImageResponse,
+  context: Pick<RunwareRequestContext, "taskUUID">
+) {
+  return (response.data ?? []).filter(
+    (output) =>
+      output.taskUUID === context.taskUUID && isCompletedRunwareOutput(output)
+  );
+}
+
+function isCompletedRunwareOutput(output: RunwareImageOutput) {
+  return (
+    (!output.status || output.status === "success") &&
+    Boolean(output.imageURL || output.imageBase64Data || output.imageDataURI)
+  );
+}
+
+function hasProcessingRunwareOutput(
+  response: RunwareImageResponse,
+  context: Pick<RunwareRequestContext, "taskUUID">
+) {
+  return (response.data ?? []).some(
+    (output) =>
+      output.taskUUID === context.taskUUID && output.status === "processing"
+  );
+}
+
+function isAsyncRunwareTask(task: RunwareTask) {
+  return "deliveryMethod" in task && task.deliveryMethod === "async";
+}
+
+function readRunwareDurationMs(
+  optionValue: number | undefined,
+  envName: string,
+  fallback: number
+) {
+  if (Number.isFinite(optionValue) && Number(optionValue) > 0) {
+    return Math.trunc(Number(optionValue));
+  }
+
+  const envValue = Number(process.env[envName]);
+
+  if (Number.isFinite(envValue) && envValue > 0) {
+    return Math.trunc(envValue);
+  }
+
+  return fallback;
+}
+
+function nextRunwarePollInterval(current: number, max: number) {
+  return Math.min(max, Math.max(current + 1, Math.ceil(current * 1.5)));
+}
+
+function isRetryableRunwareHttpStatus(status: number) {
+  return status === 429 || status >= 500;
+}
+
+function delay(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function formatRunwareErrors(

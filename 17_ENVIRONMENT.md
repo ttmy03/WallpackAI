@@ -111,6 +111,10 @@ IMAGE_PROVIDER=runware
 RUNWARE_API_KEY=...
 RUNWARE_AIR_ID=openai:gpt-image@2
 RUNWARE_UPSCALE_AIR_ID=prunaai:p-image@upscale
+# Optional async polling overrides:
+# RUNWARE_POLL_TIMEOUT_MS=600000
+# RUNWARE_POLL_INTERVAL_MS=1500
+# RUNWARE_POLL_MAX_INTERVAL_MS=7500
 ```
 
 Keep provider calls server-side.
