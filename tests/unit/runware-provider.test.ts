@@ -170,6 +170,52 @@ describe("Runware image provider", () => {
     });
   });
 
+  it("uses a Runware image UUID for P-Image input when available", async () => {
+    const requests: Array<{ inputs?: { image?: string } }> = [];
+    const provider = new RunwareUpscaleProvider({
+      apiKey: "test-key",
+      fetcher: async (input, init) => {
+        if (
+          typeof input === "string" &&
+          input.startsWith("https://image.test")
+        ) {
+          return new Response(testPngBytes(1234, 1851));
+        }
+
+        const body = JSON.parse(String(init?.body)) as Array<{
+          inputs?: { image?: string };
+        }>;
+        requests.push(body[0]);
+
+        return Response.json({
+          data: [
+            {
+              taskType: "upscale",
+              taskUUID: "upscale-task",
+              imageUUID: "upscaled-image",
+              imageURL: "https://image.test/upscaled.png",
+              cost: 0.01
+            }
+          ]
+        });
+      }
+    });
+
+    await provider.upscale({
+      bytes: testPngBytes(100, 150),
+      mimeType: "image/png",
+      width: 100,
+      height: 150,
+      providerImageId: "c5875405-da40-4d09-9244-c514674b9f7d",
+      targetWidth: 7200,
+      targetHeight: 10800
+    });
+
+    expect(requests[0]?.inputs?.image).toBe(
+      "c5875405-da40-4d09-9244-c514674b9f7d"
+    );
+  });
+
   it("runs GPT Image 2 generation without P-Image Upscale", async () => {
     const requests: unknown[] = [];
     const provider = new RunwareImageProvider({

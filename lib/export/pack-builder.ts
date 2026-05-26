@@ -50,6 +50,7 @@ export type PrintSourceImage = {
   mimeType: "image/png" | "image/jpeg" | "image/webp";
   width: number;
   height: number;
+  providerRequestId?: string;
 };
 
 type PreparedPrintSource = PrintSourceImage & {
@@ -82,6 +83,7 @@ export async function buildPrintFiles(input: {
   sourceMimeType: "image/png" | "image/jpeg" | "image/webp";
   sourceWidth: number;
   sourceHeight: number;
+  sourceProviderRequestId?: string;
   ratioKeys: PrintRatioPresetKey[];
   ratioSources?: Partial<Record<PrintRatioPresetKey, PrintSourceImage>>;
   upscaleProvider?: UpscaleProvider | null;
@@ -98,6 +100,7 @@ export async function buildPrintFiles(input: {
         sourceMimeType: input.sourceMimeType,
         sourceWidth: input.sourceWidth,
         sourceHeight: input.sourceHeight,
+        sourceProviderRequestId: input.sourceProviderRequestId,
         ratioKey,
         ratioSource: input.ratioSources?.[ratioKey],
         upscaleProvider: input.upscaleProvider,
@@ -140,6 +143,7 @@ async function buildPrintFile(input: {
   sourceMimeType: "image/png" | "image/jpeg" | "image/webp";
   sourceWidth: number;
   sourceHeight: number;
+  sourceProviderRequestId?: string;
   ratioKey: PrintRatioPresetKey;
   ratioSource?: PrintSourceImage;
   upscaleProvider?: UpscaleProvider | null;
@@ -154,13 +158,15 @@ async function buildPrintFile(input: {
       bytes: input.sourceBytes,
       mimeType: input.sourceMimeType,
       width: input.sourceWidth,
-      height: input.sourceHeight
+      height: input.sourceHeight,
+      providerRequestId: input.sourceProviderRequestId
     } satisfies PrintSourceImage);
   const source = await prepareSourceForPrintFile({
     sourceBytes: sourceImage.bytes,
     sourceMimeType: sourceImage.mimeType,
     sourceWidth: sourceImage.width,
     sourceHeight: sourceImage.height,
+    sourceProviderRequestId: sourceImage.providerRequestId,
     targetWidth: pixels.width,
     targetHeight: pixels.height,
     upscaleProvider: input.upscaleProvider
@@ -248,6 +254,7 @@ async function prepareSourceForPrintFile(input: {
   sourceMimeType: "image/png" | "image/jpeg" | "image/webp";
   sourceWidth: number;
   sourceHeight: number;
+  sourceProviderRequestId?: string;
   targetWidth: number;
   targetHeight: number;
   upscaleProvider?: UpscaleProvider | null;
@@ -271,6 +278,7 @@ async function prepareSourceForPrintFile(input: {
     mimeType: upscaleSource.mimeType,
     width: upscaleSource.width,
     height: upscaleSource.height,
+    providerImageId: upscaleSource.providerRequestId,
     targetWidth: input.targetWidth,
     targetHeight: input.targetHeight
   });
@@ -294,6 +302,7 @@ async function prepareSourceForProviderUpscale(input: {
   sourceMimeType: "image/png" | "image/jpeg" | "image/webp";
   sourceWidth: number;
   sourceHeight: number;
+  sourceProviderRequestId?: string;
   targetWidth: number;
   targetHeight: number;
 }): Promise<PrintSourceImage> {
@@ -302,7 +311,8 @@ async function prepareSourceForProviderUpscale(input: {
       bytes: input.sourceBytes,
       mimeType: input.sourceMimeType,
       width: input.sourceWidth,
-      height: input.sourceHeight
+      height: input.sourceHeight,
+      providerRequestId: input.sourceProviderRequestId
     };
   }
 

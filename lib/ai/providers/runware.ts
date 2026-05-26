@@ -138,7 +138,7 @@ export class RunwareImageProvider implements ImageProvider {
           mimeType,
           width: task.width,
           height: task.height,
-          providerRequestId: output.imageUUID ?? output.taskUUID,
+          providerRequestId: output.imageUUID,
           usage: {
             taskUUID: output.taskUUID,
             generationTaskUUID: output.taskUUID,
@@ -174,7 +174,7 @@ export class RunwareUpscaleProvider implements UpscaleProvider {
 
     const task = buildRunwareUpscaleTask(
       {
-        image: imageBytesToDataUri(input.bytes, input.mimeType),
+        image: runwareUpscaleImageInput(input),
         sourceWidth: input.width,
         sourceHeight: input.height,
         outputFormat: "JPG"
@@ -385,6 +385,20 @@ function imageBytesToDataUri(
   mimeType: UpscaleImageInput["mimeType"]
 ) {
   return `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`;
+}
+
+function runwareUpscaleImageInput(input: UpscaleImageInput) {
+  if (input.providerImageId && isUuid(input.providerImageId)) {
+    return input.providerImageId;
+  }
+
+  return imageBytesToDataUri(input.bytes, input.mimeType);
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  );
 }
 
 function formatRunwareErrors(

@@ -304,6 +304,7 @@ async function processLocalExportJob(jobId: string) {
       sourceMimeType: source.mimeType,
       sourceWidth: artwork.width,
       sourceHeight: artwork.height,
+      sourceProviderRequestId: source.providerRequestId,
       ratioKeys: job.requestedRatioKeys,
       ratioSources,
       upscaleProvider: getUpscaleProvider(),
@@ -674,7 +675,10 @@ async function getArtworkForExport(input: {
 
 async function loadArtworkSource(artwork: GeneratedArtworkPreview) {
   if (artwork.dataUrl) {
-    return dataUrlToSource(artwork.dataUrl);
+    return {
+      ...dataUrlToSource(artwork.dataUrl),
+      providerRequestId: artwork.providerRequestId
+    };
   }
 
   if (!artwork.sourceStoragePath) {
@@ -687,7 +691,8 @@ async function loadArtworkSource(artwork: GeneratedArtworkPreview) {
 
   return {
     bytes: object.bytes,
-    mimeType: mimeTypeFromContentType(object.contentType)
+    mimeType: mimeTypeFromContentType(object.contentType),
+    providerRequestId: artwork.providerRequestId
   };
 }
 
@@ -728,7 +733,8 @@ async function loadArtworkDimensionSource(
       bytes: source.bytes,
       mimeType: preview.sourceMimeType ?? source.mimeType,
       width: preview.sourceWidth,
-      height: preview.sourceHeight
+      height: preview.sourceHeight,
+      providerRequestId: preview.sourceProviderRequestId
     };
   }
 
@@ -745,7 +751,8 @@ async function loadArtworkDimensionSource(
     mimeType:
       preview.sourceMimeType ?? mimeTypeFromContentType(object.contentType),
     width: preview.sourceWidth,
-    height: preview.sourceHeight
+    height: preview.sourceHeight,
+    providerRequestId: preview.sourceProviderRequestId
   };
 }
 

@@ -49,13 +49,15 @@ describe("print pack builder", () => {
       sourceMimeType: source.mimeType,
       sourceWidth: source.width,
       sourceHeight: source.height,
+      sourceProviderRequestId: "primary-runware-image",
       ratioKeys: ["2x3", "3x4"],
       ratioSources: {
         "3x4": {
           bytes: Buffer.from(ratioSource.bytes),
           mimeType: ratioSource.mimeType,
           width: ratioSource.width,
-          height: ratioSource.height
+          height: ratioSource.height,
+          providerRequestId: "ratio-runware-image"
         }
       },
       upscaleProvider
@@ -85,13 +87,15 @@ describe("print pack builder", () => {
       width: 864,
       height: 1296,
       targetWidth: 7200,
-      targetHeight: 10800
+      targetHeight: 10800,
+      providerImageId: "primary-runware-image"
     });
     expect(threeByFourCall).toMatchObject({
       width: 900,
       height: 1200,
       targetWidth: 5400,
-      targetHeight: 7200
+      targetHeight: 7200,
+      providerImageId: "ratio-runware-image"
     });
     expect(twoByThreeCall?.width).not.toBe(threeByFourCall?.width);
     expect(result.files.map((file) => file.ratioKey)).toEqual(["2x3", "3x4"]);
@@ -128,13 +132,15 @@ describe("print pack builder", () => {
       sourceMimeType: primarySource.mimeType,
       sourceWidth: primarySource.width,
       sourceHeight: primarySource.height,
+      sourceProviderRequestId: "primary-runware-image",
       ratioKeys: ["2x3", "3x4"],
       ratioSources: {
         "3x4": {
           bytes: Buffer.from(ratioSource.bytes),
           mimeType: ratioSource.mimeType,
           width: ratioSource.width,
-          height: ratioSource.height
+          height: ratioSource.height,
+          providerRequestId: "ratio-runware-image"
         }
       },
       upscaleProvider
@@ -147,13 +153,15 @@ describe("print pack builder", () => {
           width: 864,
           height: 1296,
           targetWidth: 7200,
-          targetHeight: 10800
+          targetHeight: 10800,
+          providerImageId: "primary-runware-image"
         }),
         expect.objectContaining({
           width: 900,
           height: 1200,
           targetWidth: 5400,
-          targetHeight: 7200
+          targetHeight: 7200,
+          providerImageId: "ratio-runware-image"
         })
       ])
     );
@@ -166,7 +174,8 @@ describe("print pack builder", () => {
       width: 864,
       height: 1296,
       targetWidth: 7200,
-      targetHeight: 10800
+      targetHeight: 10800,
+      providerImageId: "primary-runware-image"
     });
     expect(
       upscaleProvider.calls.find(
@@ -177,7 +186,8 @@ describe("print pack builder", () => {
       width: 900,
       height: 1200,
       targetWidth: 5400,
-      targetHeight: 7200
+      targetHeight: 7200,
+      providerImageId: "ratio-runware-image"
     });
   }, 20_000);
 
