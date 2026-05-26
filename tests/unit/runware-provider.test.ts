@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+import sharp from "sharp";
 
 import {
   buildRunwareImageTask,
   buildRunwareUpscaleTask,
   RUNWARE_GPT_IMAGE_AIR_ID,
   RUNWARE_P_IMAGE_UPSCALE_AIR_ID,
+  RUNWARE_P_IMAGE_UPSCALE_MAX_INPUT_PIXELS,
   RunwareImageProvider,
   RunwareUpscaleProvider,
   resolveRunwareDimensions
@@ -66,21 +68,45 @@ describe("Runware image provider", () => {
       height: 2304
     });
     expect(resolveRunwareDimensions({ aspectRatio: "4:5" })).toEqual({
-      width: 2048,
-      height: 2560
+      width: 1824,
+      height: 2288
     });
     expect(resolveRunwareDimensions({ aspectRatio: "11x14" })).toEqual({
-      width: 2048,
-      height: 2608
+      width: 1808,
+      height: 2304
     });
     expect(resolveRunwareDimensions({ aspectRatio: "3x2" })).toEqual({
       width: 2496,
       height: 1664
     });
     expect(resolveRunwareDimensions({ aspectRatio: "14:11" })).toEqual({
-      width: 2608,
-      height: 2048
+      width: 2304,
+      height: 1808
     });
+    expect(
+      [
+        "1x1",
+        "2x3",
+        "3x4",
+        "4x5",
+        "5x7",
+        "11x14",
+        "iso-a",
+        "3x2",
+        "4x3",
+        "5x4",
+        "7x5",
+        "14x11",
+        "iso-a-landscape"
+      ].every((aspectRatio) => {
+        const dimensions = resolveRunwareDimensions({ aspectRatio });
+
+        return (
+          dimensions.width * dimensions.height <=
+          RUNWARE_P_IMAGE_UPSCALE_MAX_INPUT_PIXELS
+        );
+      })
+    ).toBe(true);
   });
 
   it("accepts GPT Image 2 compatible dimensions", () => {
@@ -214,6 +240,71 @@ describe("Runware image provider", () => {
     expect(requests[0]?.inputs?.image).toBe(
       "c5875405-da40-4d09-9244-c514674b9f7d"
     );
+  });
+
+  it("resizes oversized P-Image inputs before sending them to Runware", async () => {
+    const requests: Array<{ inputs?: { image?: string } }> = [];
+    const provider = new RunwareUpscaleProvider({
+      apiKey: "test-key",
+      fetcher: async (input, init) => {
+        if (
+          typeof input === "string" &&
+          input.startsWith("https://image.test")
+        ) {
+          return new Response(testPngBytes(1234, 1851));
+        }
+
+        const body = JSON.parse(String(init?.body)) as Array<{
+          inputs?: { image?: string };
+        }>;
+        requests.push(body[0]);
+
+        return Response.json({
+          data: [
+            {
+              taskType: "upscale",
+              taskUUID: "upscale-task",
+              imageUUID: "upscaled-image",
+              imageURL: "https://image.test/upscaled.png",
+              cost: 0.01
+            }
+          ]
+        });
+      }
+    });
+    const sourceBytes = await sharp({
+      create: {
+        width: 2048,
+        height: 2560,
+        channels: 3,
+        background: { r: 120, g: 140, b: 180 }
+      }
+    })
+      .png()
+      .toBuffer();
+    const image = await provider.upscale({
+      bytes: sourceBytes,
+      mimeType: "image/png",
+      width: 2048,
+      height: 2560,
+      providerImageId: "c5875405-da40-4d09-9244-c514674b9f7d",
+      targetWidth: 4800,
+      targetHeight: 6000
+    });
+
+    expect(requests[0]?.inputs?.image).toMatch(/^data:image\/jpeg;base64,/);
+    expect(requests[0]?.inputs?.image).not.toBe(
+      "c5875405-da40-4d09-9244-c514674b9f7d"
+    );
+    expect(image.usage).toMatchObject({
+      upscaleInputResized: true,
+      upscaleInputWidth: 1831,
+      upscaleInputHeight: 2289
+    });
+    expect(
+      Number(image.usage?.upscaleInputWidth) *
+        Number(image.usage?.upscaleInputHeight)
+    ).toBeLessThanOrEqual(RUNWARE_P_IMAGE_UPSCALE_MAX_INPUT_PIXELS);
   });
 
   it("runs GPT Image 2 generation without P-Image Upscale", async () => {

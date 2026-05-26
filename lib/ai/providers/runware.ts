@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+import sharp from "sharp";
+
 import type {
   GeneratedImage,
   GenerateImageInput,
@@ -14,6 +16,7 @@ import { readImageDimensions } from "@/lib/image/dimensions";
 
 export const RUNWARE_GPT_IMAGE_AIR_ID = "openai:gpt-image@2";
 export const RUNWARE_P_IMAGE_UPSCALE_AIR_ID = "prunaai:p-image@upscale";
+export const RUNWARE_P_IMAGE_UPSCALE_MAX_INPUT_PIXELS = 4_194_304;
 export const RUNWARE_API_URL = "https://api.runware.ai/v1";
 
 type RunwareImageTask = {
@@ -172,11 +175,12 @@ export class RunwareUpscaleProvider implements UpscaleProvider {
       throw new Error("RUNWARE_API_KEY is required for Runware upscaling");
     }
 
+    const inputImage = await prepareRunwareUpscaleInputImage(input);
     const task = buildRunwareUpscaleTask(
       {
-        image: runwareUpscaleImageInput(input),
-        sourceWidth: input.width,
-        sourceHeight: input.height,
+        image: inputImage.image,
+        sourceWidth: inputImage.width,
+        sourceHeight: inputImage.height,
         outputFormat: "JPG"
       },
       {
@@ -225,8 +229,8 @@ export class RunwareUpscaleProvider implements UpscaleProvider {
     const dimensions =
       readImageDimensions(bytes) ??
       dimensionsFromMegapixels(
-        input.width,
-        input.height,
+        inputImage.width,
+        inputImage.height,
         task.targetMegapixels
       );
 
@@ -243,6 +247,9 @@ export class RunwareUpscaleProvider implements UpscaleProvider {
         upscaleCost: output.cost,
         cost: output.cost,
         model: task.model,
+        upscaleInputWidth: inputImage.width,
+        upscaleInputHeight: inputImage.height,
+        upscaleInputResized: inputImage.resized,
         upscaleTargetMegapixels: task.targetMegapixels,
         targetWidth: input.targetWidth,
         targetHeight: input.targetHeight
@@ -380,6 +387,102 @@ function dimensionsFromMegapixels(
   return { width, height };
 }
 
+async function prepareRunwareUpscaleInputImage(input: UpscaleImageInput) {
+  if (isWithinMaxPixels(input, RUNWARE_P_IMAGE_UPSCALE_MAX_INPUT_PIXELS)) {
+    return {
+      image: runwareUpscaleImageInput(input),
+      width: input.width,
+      height: input.height,
+      resized: false
+    };
+  }
+
+  const resized = await resizeImageToMaxPixels({
+    bytes: input.bytes,
+    maxPixels: RUNWARE_P_IMAGE_UPSCALE_MAX_INPUT_PIXELS,
+    sourceWidth: input.width,
+    sourceHeight: input.height
+  });
+
+  return {
+    image: imageBytesToDataUri(resized.bytes, "image/jpeg"),
+    width: resized.width,
+    height: resized.height,
+    resized: true
+  };
+}
+
+async function resizeImageToMaxPixels(input: {
+  bytes: Uint8Array;
+  maxPixels: number;
+  sourceWidth: number;
+  sourceHeight: number;
+}) {
+  const dimensions = capDimensionsToMaxPixels(
+    {
+      width: input.sourceWidth,
+      height: input.sourceHeight
+    },
+    { maxPixels: input.maxPixels }
+  );
+  const bytes = await sharp(Buffer.from(input.bytes))
+    .rotate()
+    .resize({
+      width: dimensions.width,
+      height: dimensions.height,
+      fit: "fill",
+      kernel: sharp.kernel.lanczos3,
+      withoutEnlargement: true
+    })
+    .flatten({ background: "#ffffff" })
+    .toColorspace("srgb")
+    .jpeg({ quality: 95, mozjpeg: true })
+    .toBuffer();
+
+  return {
+    bytes,
+    width: dimensions.width,
+    height: dimensions.height
+  };
+}
+
+function capDimensionsToMaxPixels(
+  dimensions: { width: number; height: number },
+  options: { maxPixels: number; step?: number }
+) {
+  if (isWithinMaxPixels(dimensions, options.maxPixels)) {
+    return dimensions;
+  }
+
+  const step = options.step ?? 1;
+  const scale = Math.sqrt(
+    options.maxPixels / (dimensions.width * dimensions.height)
+  );
+  let width = Math.max(step, floorToStep(dimensions.width * scale, step));
+  let height = Math.max(step, floorToStep(dimensions.height * scale, step));
+
+  while (width * height > options.maxPixels) {
+    if (width >= height) {
+      width = Math.max(step, width - step);
+    } else {
+      height = Math.max(step, height - step);
+    }
+  }
+
+  return { width, height };
+}
+
+function isWithinMaxPixels(
+  dimensions: { width: number; height: number },
+  maxPixels: number
+) {
+  return dimensions.width * dimensions.height <= maxPixels;
+}
+
+function floorToStep(value: number, step: number) {
+  return Math.floor(value / step) * step;
+}
+
 function imageBytesToDataUri(
   bytes: Uint8Array,
   mimeType: UpscaleImageInput["mimeType"]
@@ -442,35 +545,47 @@ export function resolveRunwareDimensions(input: {
     return validateRunwareDimensions(input.width, input.height);
   }
 
-  switch (normalizeRatio(input.aspectRatio)) {
-    case "1x1":
-      return { width: 2048, height: 2048 };
-    case "3x4":
-      return { width: 1728, height: 2304 };
-    case "4x5":
-      return { width: 2048, height: 2560 };
-    case "5x7":
-      return { width: 2048, height: 2864 };
-    case "11x14":
-      return { width: 2048, height: 2608 };
-    case "iso-a":
-      return { width: 2048, height: 2896 };
-    case "3x2":
-      return { width: 2496, height: 1664 };
-    case "4x3":
-      return { width: 2304, height: 1728 };
-    case "5x4":
-      return { width: 2560, height: 2048 };
-    case "7x5":
-      return { width: 2864, height: 2048 };
-    case "14x11":
-      return { width: 2608, height: 2048 };
-    case "iso-a-landscape":
-      return { width: 2896, height: 2048 };
-    case "2x3":
-    default:
-      return { width: 1664, height: 2496 };
-  }
+  const dimensions = (() => {
+    switch (normalizeRatio(input.aspectRatio)) {
+      case "1x1":
+        return { width: 2048, height: 2048 };
+      case "3x4":
+        return { width: 1728, height: 2304 };
+      case "4x5":
+        return { width: 2048, height: 2560 };
+      case "5x7":
+        return { width: 2048, height: 2864 };
+      case "11x14":
+        return { width: 2048, height: 2608 };
+      case "iso-a":
+        return { width: 2048, height: 2896 };
+      case "3x2":
+        return { width: 2496, height: 1664 };
+      case "4x3":
+        return { width: 2304, height: 1728 };
+      case "5x4":
+        return { width: 2560, height: 2048 };
+      case "7x5":
+        return { width: 2864, height: 2048 };
+      case "14x11":
+        return { width: 2608, height: 2048 };
+      case "iso-a-landscape":
+        return { width: 2896, height: 2048 };
+      case "2x3":
+      default:
+        return { width: 1664, height: 2496 };
+    }
+  })();
+
+  const cappedDimensions = capDimensionsToMaxPixels(dimensions, {
+    maxPixels: RUNWARE_P_IMAGE_UPSCALE_MAX_INPUT_PIXELS,
+    step: 16
+  });
+
+  return validateRunwareDimensions(
+    cappedDimensions.width,
+    cappedDimensions.height
+  );
 }
 
 function validateRunwareDimensions(width: number, height: number) {
