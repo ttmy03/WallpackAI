@@ -38,7 +38,11 @@ import {
   reserveLocalCredits
 } from "@/lib/jobs/local-generation-runner";
 import { sanitizeFilename } from "@/lib/print/filenames";
-import { type PrintRatioPresetKey } from "@/lib/print/presets";
+import { effectiveDpi, presetKeyToPixels } from "@/lib/print/math";
+import {
+  getPrintRatioPreset,
+  type PrintRatioPresetKey
+} from "@/lib/print/presets";
 import { STYLE_PRESETS } from "@/lib/prompts/presets";
 import { getStorageProvider } from "@/lib/storage";
 
@@ -819,18 +823,33 @@ function buildSupportFiles(input: {
     },
     upscaleProvider: input.printBuild.upscaleProvider,
     upscaleUsage: input.printBuild.upscaleUsage,
-    files: input.printFiles.map((file) => ({
-      fileName: file.fileName,
-      ratioKey: file.ratioKey,
-      width: file.width,
-      height: file.height,
-      workingWidth: file.workingWidth,
-      workingHeight: file.workingHeight,
-      upscaleProvider: file.upscaleProvider,
-      upscaleUsage: file.upscaleUsage,
-      bytes: file.bytes.byteLength,
-      quality: file.quality
-    })),
+    files: input.printFiles.map((file) => {
+      const preset = getPrintRatioPreset(file.ratioKey);
+      const targetPixels = presetKeyToPixels(file.ratioKey);
+
+      return {
+        fileName: file.fileName,
+        ratioKey: file.ratioKey,
+        targetDpi: preset.targetDpi,
+        targetWidth: targetPixels.width,
+        targetHeight: targetPixels.height,
+        width: file.width,
+        height: file.height,
+        workingWidth: file.workingWidth,
+        workingHeight: file.workingHeight,
+        effectiveDpiAtMaxSize: effectiveDpi(
+          { width: file.width, height: file.height },
+          {
+            width: preset.masterPrintWidthIn,
+            height: preset.masterPrintHeightIn
+          }
+        ),
+        upscaleProvider: file.upscaleProvider,
+        upscaleUsage: file.upscaleUsage,
+        bytes: file.bytes.byteLength,
+        quality: file.quality
+      };
+    }),
     etsy: {
       maxUploadFiles: 5,
       targetUploadBytes: 18 * 1024 * 1024,

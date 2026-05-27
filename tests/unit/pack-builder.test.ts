@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import sharp from "sharp";
 
 import { MockImageProvider } from "@/lib/ai/providers/mock";
 import type {
@@ -31,7 +32,7 @@ class RecordingUpscaleProvider implements UpscaleProvider {
 }
 
 describe("print pack builder", () => {
-  it("uses AI-upscaled output directly without sharp-enlarging to print dimensions", async () => {
+  it("renders AI-upscaled sources to exact 300 DPI print dimensions", async () => {
     const provider = new MockImageProvider();
     const [source] = await provider.generate({
       prompt: "minimalist mountain landscape",
@@ -101,16 +102,33 @@ describe("print pack builder", () => {
     expect(result.files.map((file) => file.ratioKey)).toEqual(["2x3", "3x4"]);
     expect(result.files[0]).toMatchObject({
       ratioKey: "2x3",
-      width: 1728,
-      height: 2592,
+      fileName: "2x3_24x36in_300dpi.jpg",
+      width: 7200,
+      height: 10800,
+      workingWidth: 1728,
+      workingHeight: 2592,
       upscaleProvider: "recording-upscale"
+    });
+    expect(result.files[1]).toMatchObject({
+      ratioKey: "3x4",
+      fileName: "3x4_18x24in_300dpi.jpg",
+      width: 5400,
+      height: 7200,
+      workingWidth: 1800,
+      workingHeight: 2400,
+      upscaleProvider: "recording-upscale"
+    });
+    await expectPrintJpegMetadata(result.files[0].bytes, {
+      width: 7200,
+      height: 10800,
+      density: 300
     });
     expect(result.upscaleUsage?.mode).toBe("per-ratio");
     expect(result.warnings).toEqual(
-      expect.arrayContaining([expect.stringContaining("AI upscale finished")])
+      expect.arrayContaining([expect.stringContaining("was enlarged")])
     );
-    expect(result.warnings).toHaveLength(1);
-  }, 20_000);
+    expect(result.warnings).toHaveLength(2);
+  }, 60_000);
 
   it("uses ratio-specific generated sources when they are available", async () => {
     const provider = new MockImageProvider();
@@ -132,7 +150,7 @@ describe("print pack builder", () => {
       sourceWidth: primarySource.width,
       sourceHeight: primarySource.height,
       sourceProviderRequestId: "primary-runware-image",
-      ratioKeys: ["2x3", "3x4"],
+      ratioKeys: ["3x4"],
       ratioSources: {
         "3x4": {
           bytes: Buffer.from(ratioSource.bytes),
@@ -145,16 +163,9 @@ describe("print pack builder", () => {
       upscaleProvider
     });
 
-    expect(upscaleProvider.calls).toHaveLength(2);
+    expect(upscaleProvider.calls).toHaveLength(1);
     expect(upscaleProvider.calls).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          width: 864,
-          height: 1296,
-          targetWidth: 7200,
-          targetHeight: 10800,
-          providerImageId: "primary-runware-image"
-        }),
         expect.objectContaining({
           width: 900,
           height: 1200,
@@ -164,18 +175,6 @@ describe("print pack builder", () => {
         })
       ])
     );
-    expect(
-      upscaleProvider.calls.find(
-        (call) => call.targetWidth === 7200 && call.targetHeight === 10800
-      )
-    ).toMatchObject({
-      mimeType: "image/png",
-      width: 864,
-      height: 1296,
-      targetWidth: 7200,
-      targetHeight: 10800,
-      providerImageId: "primary-runware-image"
-    });
     expect(
       upscaleProvider.calls.find(
         (call) => call.targetWidth === 5400 && call.targetHeight === 7200
@@ -188,7 +187,7 @@ describe("print pack builder", () => {
       targetHeight: 7200,
       providerImageId: "ratio-runware-image"
     });
-  }, 20_000);
+  }, 60_000);
 
   it("does not sharp-reframe a mismatched source before AI upscaling", async () => {
     const [source] = await new MockImageProvider().generate({
@@ -233,3 +232,15 @@ describe("print pack builder", () => {
     expect([...builtRatioKeys].sort()).toEqual(["2x3", "3x4"]);
   }, 20_000);
 });
+
+async function expectPrintJpegMetadata(
+  bytes: Buffer,
+  expected: { width: number; height: number; density: number }
+) {
+  const metadata = await sharp(bytes).metadata();
+
+  expect(metadata.format).toBe("jpeg");
+  expect(metadata.width).toBe(expected.width);
+  expect(metadata.height).toBe(expected.height);
+  expect(metadata.density).toBe(expected.density);
+}

@@ -3,7 +3,7 @@ import sharp from "sharp";
 import type { UpscaleProvider } from "@/lib/ai/upscale-provider";
 import { fitImageWithinCanvas } from "@/lib/image/fit";
 import type { ExportPrintFileView } from "@/lib/jobs/export-types";
-import { presetKeyToPixels } from "@/lib/print/math";
+import { presetKeyToPixels, upscaleWarning } from "@/lib/print/math";
 import {
   getPrintRatioPreset,
   type PrintRatioPreset,
@@ -15,8 +15,8 @@ const TARGET_PRINT_FILE_BYTES = 18 * 1024 * 1024;
 const PRINT_FILE_BACKGROUND = "#ffffff";
 const BLURRED_BACKGROUND_SIGMA = 36;
 const MEMORY_HEAVY_JPEG_ENCODER_THRESHOLD_MP = 40;
-const DEFAULT_PRINT_FILE_BUILD_CONCURRENCY = 5;
-const MAX_PRINT_FILE_BUILD_CONCURRENCY = 5;
+const DEFAULT_PRINT_FILE_BUILD_CONCURRENCY = 1;
+const MAX_PRINT_FILE_BUILD_CONCURRENCY = 2;
 
 export type BuiltExportFile = {
   fileName: string;
@@ -56,7 +56,6 @@ export type PrintSourceImage = {
 type PreparedPrintSource = PrintSourceImage & {
   upscaleProvider: string;
   upscaleUsage?: Record<string, unknown>;
-  aiUpscaled: boolean;
 };
 
 type RenderedPrintImage = {
@@ -111,7 +110,7 @@ export async function buildPrintFiles(input: {
   const files = buildResults.map((result) => result.file);
   const warnings = [
     ...buildResults.flatMap((result) => result.warnings),
-    ...aiUpscaleDimensionWarnings(files)
+    ...printUpscaleQualityWarnings(files)
   ];
 
   return {
@@ -179,6 +178,8 @@ async function buildPrintFile(input: {
     height: pixels.height
   };
   const rendered = await renderPrintImageForSource(source, targetPixels);
+
+  assertRenderedPrintDimensions(preset, rendered, targetPixels);
 
   if (rendered.bytes.byteLength > TARGET_PRINT_FILE_BYTES) {
     warnings.push(
@@ -264,8 +265,7 @@ async function prepareSourceForPrintFile(input: {
       mimeType: ratioSource.mimeType,
       width: ratioSource.width,
       height: ratioSource.height,
-      upscaleProvider: "none",
-      aiUpscaled: false
+      upscaleProvider: "none"
     };
   }
 
@@ -289,8 +289,7 @@ async function prepareSourceForPrintFile(input: {
       typeof upscaled.usage?.model === "string"
         ? upscaled.usage.model
         : "upscale",
-    upscaleUsage: upscaled.usage,
-    aiUpscaled: true
+    upscaleUsage: upscaled.usage
   };
 }
 
@@ -322,55 +321,14 @@ async function renderPrintImageForSource(
   source: PreparedPrintSource,
   targetPixels: { width: number; height: number }
 ): Promise<RenderedPrintImage> {
-  if (source.aiUpscaled) {
-    return providerUpscaledSourceAsPrintImage(source);
-  }
-
-  return (
-    printReadySourceAsRenderedJpeg(source, targetPixels) ??
-    (await renderJpegWithinTarget(
-      source.bytes,
-      {
-        width: source.width,
-        height: source.height
-      },
-      targetPixels
-    ))
+  return renderJpegWithinTarget(
+    source.bytes,
+    {
+      width: source.width,
+      height: source.height
+    },
+    targetPixels
   );
-}
-
-function providerUpscaledSourceAsPrintImage(
-  source: PreparedPrintSource
-): RenderedPrintImage {
-  return {
-    bytes: source.bytes,
-    contentType: contentTypeForMimeType(source.mimeType),
-    width: source.width,
-    height: source.height,
-    quality: numberFromUsage(source.upscaleUsage, "outputQuality") ?? 95
-  };
-}
-
-function printReadySourceAsRenderedJpeg(
-  source: PreparedPrintSource,
-  targetPixels: { width: number; height: number }
-): RenderedPrintImage | null {
-  if (
-    source.mimeType !== "image/jpeg" ||
-    source.width !== targetPixels.width ||
-    source.height !== targetPixels.height ||
-    source.bytes.byteLength > TARGET_PRINT_FILE_BYTES
-  ) {
-    return null;
-  }
-
-  return {
-    bytes: source.bytes,
-    contentType: "image/jpeg",
-    width: targetPixels.width,
-    height: targetPixels.height,
-    quality: 95
-  };
 }
 
 async function renderRatioSourceImage(input: {
@@ -445,27 +403,35 @@ function summarizeUpscaleProviders(files: BuiltPrintFile[]) {
   return providers.length === 1 ? providers[0] : providers.join(",");
 }
 
-function aiUpscaleDimensionWarnings(files: BuiltPrintFile[]) {
-  const nativeSizeFiles = files.filter((file) => {
-    if (file.upscaleProvider === "none") {
-      return false;
+function printUpscaleQualityWarnings(files: BuiltPrintFile[]) {
+  return files.flatMap((file) => {
+    const warning = upscaleWarning(
+      { width: file.workingWidth, height: file.workingHeight },
+      { width: file.width, height: file.height }
+    );
+
+    if (warning === "pass") {
+      return [];
     }
 
-    return !matchesExactDimensions(file, presetKeyToPixels(file.ratioKey));
+    const scaleFactor = printResizeFactor({
+      sourceWidth: file.workingWidth,
+      sourceHeight: file.workingHeight,
+      targetWidth: file.width,
+      targetHeight: file.height
+    });
+    const roundedFactor = scaleFactor.toFixed(1);
+
+    if (warning === "strong_warning") {
+      return [
+        `${file.fileName} was enlarged ${roundedFactor}x from the working image to reach the selected print size. Fine detail may look softer at the largest print sizes.`
+      ];
+    }
+
+    return [
+      `${file.fileName} was enlarged ${roundedFactor}x from the working image to reach the selected print size. Review detail quality before listing.`
+    ];
   });
-
-  if (nativeSizeFiles.length === 0) {
-    return [];
-  }
-
-  const fileLabel =
-    nativeSizeFiles.length === 1
-      ? "1 print file"
-      : `${nativeSizeFiles.length} print files`;
-
-  return [
-    `AI upscale finished at the provider's native pixel size for ${fileLabel}. We kept the sharper AI result instead of stretching it locally. Final pixel dimensions are listed below.`
-  ];
 }
 
 function printFileNameForRenderedImage(
@@ -480,7 +446,9 @@ function printFileNameForRenderedImage(
     return preset.fileName;
   }
 
-  return `${preset.key}_ai-upscaled_${rendered.width}x${rendered.height}px.${extensionForContentType(rendered.contentType)}`;
+  throw new Error(
+    `${preset.fileName} did not render at the required ${targetPixels.width} x ${targetPixels.height} px dimensions.`
+  );
 }
 
 function matchesExactDimensions(
@@ -488,41 +456,6 @@ function matchesExactDimensions(
   pixels: { width: number; height: number }
 ) {
   return image.width === pixels.width && image.height === pixels.height;
-}
-
-function contentTypeForMimeType(mimeType: PrintSourceImage["mimeType"]) {
-  switch (mimeType) {
-    case "image/png":
-      return "image/png";
-    case "image/webp":
-      return "image/webp";
-    case "image/jpeg":
-    default:
-      return "image/jpeg";
-  }
-}
-
-function extensionForContentType(contentType: string) {
-  if (contentType === "image/png") {
-    return "png";
-  }
-
-  if (contentType === "image/webp") {
-    return "webp";
-  }
-
-  return "jpg";
-}
-
-function numberFromUsage(
-  usage: Record<string, unknown> | undefined,
-  key: string
-) {
-  const value = usage?.[key];
-
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
 }
 
 function maxPrintFileDimension(
@@ -617,6 +550,7 @@ async function renderJpegWithinTarget(
   for (const quality of JPEG_QUALITY_STEPS) {
     const bytes = await sharp(background)
       .composite([{ input: foreground, left: frame.left, top: frame.top }])
+      .withMetadata({ density: 300 })
       .jpeg(printJpegOptions(quality, targetPixels))
       .toBuffer();
 
@@ -664,6 +598,7 @@ async function renderDirectJpegResize(
       })
       .flatten({ background: PRINT_FILE_BACKGROUND })
       .toColorspace("srgb")
+      .withMetadata({ density: 300 })
       .jpeg(printJpegOptions(quality, targetPixels))
       .toBuffer();
 
@@ -693,6 +628,32 @@ function renderedJpegImage(
     height: pixels.height,
     quality
   };
+}
+
+function assertRenderedPrintDimensions(
+  preset: PrintRatioPreset,
+  rendered: { width: number; height: number },
+  targetPixels: { width: number; height: number }
+) {
+  if (matchesExactDimensions(rendered, targetPixels)) {
+    return;
+  }
+
+  throw new Error(
+    `${preset.fileName} rendered at ${rendered.width} x ${rendered.height} px instead of ${targetPixels.width} x ${targetPixels.height} px.`
+  );
+}
+
+function printResizeFactor(input: {
+  sourceWidth: number;
+  sourceHeight: number;
+  targetWidth: number;
+  targetHeight: number;
+}) {
+  return (
+    Math.max(input.targetWidth, input.targetHeight) /
+    Math.max(input.sourceWidth, input.sourceHeight)
+  );
 }
 
 function printJpegOptions(
