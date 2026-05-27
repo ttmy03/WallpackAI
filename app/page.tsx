@@ -1,6 +1,7 @@
 import { ArrowRight, Download, FileText, Images, Ruler } from "lucide-react";
 import Link from "next/link";
 
+import { BrandLogo } from "@/components/brand-logo";
 import { PrintPackVisual } from "@/components/marketing/print-pack-visual";
 import { Button } from "@/components/ui/button";
 
@@ -26,9 +27,7 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(9,12,9,0.92),rgba(9,12,9,0.62),rgba(9,12,9,0.18))]" />
         <div className="relative mx-auto grid min-h-[calc(100svh-4rem)] max-w-7xl items-center gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(360px,0.55fr)] lg:px-8">
           <div className="max-w-2xl">
-            <p className="text-sm font-medium uppercase tracking-[0.28em] text-emerald-100/80">
-              WallPack AI
-            </p>
+            <BrandLogo size="lg" tone="inverse" />
             <h1 className="mt-5 text-5xl font-semibold leading-[1.02] tracking-normal sm:text-6xl lg:text-7xl">
               Etsy-ready printable wall art packs.
             </h1>

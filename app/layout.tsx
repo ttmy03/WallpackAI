@@ -4,6 +4,7 @@ import Link from "next/link";
 import "./globals.css";
 
 import { AuthNav } from "@/components/auth/auth-nav";
+import { BrandLogo } from "@/components/brand-logo";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,7 +19,26 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "WallPack AI",
   description:
-    "Create Etsy-ready printable wall-art packs with ratios, mockups, listing copy, and buyer instructions."
+    "Create Etsy-ready printable wall-art packs with ratios, mockups, listing copy, and buyer instructions.",
+  icons: {
+    icon: [
+      { url: "/brand/wallpack-mark.svg", type: "image/svg+xml" },
+      { url: "/brand/wallpack-icon-32.png", sizes: "32x32", type: "image/png" },
+      {
+        url: "/brand/wallpack-icon-192.png",
+        sizes: "192x192",
+        type: "image/png"
+      }
+    ],
+    apple: [
+      {
+        url: "/brand/apple-touch-icon.png",
+        sizes: "180x180",
+        type: "image/png"
+      }
+    ],
+    shortcut: ["/favicon.ico"]
+  }
 };
 
 export default function RootLayout({
@@ -36,13 +56,12 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         <header className="sticky top-0 z-50 border-b bg-background/90 backdrop-blur">
           <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-            <Link href="/" className="flex items-center gap-3">
-              <span className="grid size-8 place-items-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
-                W
-              </span>
-              <span className="text-sm font-semibold tracking-wide">
-                WallPack AI
-              </span>
+            <Link
+              href="/"
+              aria-label="WallPack AI home"
+              className="flex min-w-0 items-center"
+            >
+              <BrandLogo size="sm" decorative />
             </Link>
             <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
               <Link
