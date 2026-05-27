@@ -109,10 +109,7 @@ export async function buildPrintFiles(input: {
     }
   );
   const files = buildResults.map((result) => result.file);
-  const warnings = [
-    ...buildResults.flatMap((result) => result.warnings),
-    ...aiUpscaleDimensionWarnings(files)
-  ];
+  const warnings = buildResults.flatMap((result) => result.warnings);
 
   return {
     files,
@@ -179,6 +176,8 @@ async function buildPrintFile(input: {
     height: pixels.height
   };
   const rendered = await renderPrintImageForSource(source, targetPixels);
+
+  assertRenderedPrintImageMatchesTarget(rendered, preset, targetPixels);
 
   if (rendered.bytes.byteLength > TARGET_PRINT_FILE_BYTES) {
     warnings.push(
@@ -322,10 +321,6 @@ async function renderPrintImageForSource(
   source: PreparedPrintSource,
   targetPixels: { width: number; height: number }
 ): Promise<RenderedPrintImage> {
-  if (source.aiUpscaled) {
-    return providerUpscaledSourceAsPrintImage(source);
-  }
-
   return (
     printReadySourceAsRenderedJpeg(source, targetPixels) ??
     (await renderJpegWithinTarget(
@@ -337,18 +332,6 @@ async function renderPrintImageForSource(
       targetPixels
     ))
   );
-}
-
-function providerUpscaledSourceAsPrintImage(
-  source: PreparedPrintSource
-): RenderedPrintImage {
-  return {
-    bytes: source.bytes,
-    contentType: contentTypeForMimeType(source.mimeType),
-    width: source.width,
-    height: source.height,
-    quality: numberFromUsage(source.upscaleUsage, "outputQuality") ?? 95
-  };
 }
 
 function printReadySourceAsRenderedJpeg(
@@ -445,29 +428,6 @@ function summarizeUpscaleProviders(files: BuiltPrintFile[]) {
   return providers.length === 1 ? providers[0] : providers.join(",");
 }
 
-function aiUpscaleDimensionWarnings(files: BuiltPrintFile[]) {
-  const nativeSizeFiles = files.filter((file) => {
-    if (file.upscaleProvider === "none") {
-      return false;
-    }
-
-    return !matchesExactDimensions(file, presetKeyToPixels(file.ratioKey));
-  });
-
-  if (nativeSizeFiles.length === 0) {
-    return [];
-  }
-
-  const fileLabel =
-    nativeSizeFiles.length === 1
-      ? "1 print file"
-      : `${nativeSizeFiles.length} print files`;
-
-  return [
-    `AI upscale finished at the provider's native pixel size for ${fileLabel}. We kept the sharper AI result instead of stretching it locally. Final pixel dimensions are listed below.`
-  ];
-}
-
 function printFileNameForRenderedImage(
   preset: PrintRatioPreset,
   targetPixels: { width: number; height: number },
@@ -490,16 +450,21 @@ function matchesExactDimensions(
   return image.width === pixels.width && image.height === pixels.height;
 }
 
-function contentTypeForMimeType(mimeType: PrintSourceImage["mimeType"]) {
-  switch (mimeType) {
-    case "image/png":
-      return "image/png";
-    case "image/webp":
-      return "image/webp";
-    case "image/jpeg":
-    default:
-      return "image/jpeg";
+function assertRenderedPrintImageMatchesTarget(
+  rendered: RenderedPrintImage,
+  preset: PrintRatioPreset,
+  targetPixels: { width: number; height: number }
+) {
+  if (
+    rendered.contentType === "image/jpeg" &&
+    matchesExactDimensions(rendered, targetPixels)
+  ) {
+    return;
   }
+
+  throw new Error(
+    `${preset.fileName} did not render to the promised print pixels (${targetPixels.width} x ${targetPixels.height}).`
+  );
 }
 
 function extensionForContentType(contentType: string) {
@@ -512,17 +477,6 @@ function extensionForContentType(contentType: string) {
   }
 
   return "jpg";
-}
-
-function numberFromUsage(
-  usage: Record<string, unknown> | undefined,
-  key: string
-) {
-  const value = usage?.[key];
-
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
 }
 
 function maxPrintFileDimension(

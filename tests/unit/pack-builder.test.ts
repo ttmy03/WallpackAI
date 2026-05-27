@@ -31,7 +31,7 @@ class RecordingUpscaleProvider implements UpscaleProvider {
 }
 
 describe("print pack builder", () => {
-  it("uses AI-upscaled output directly without sharp-enlarging to print dimensions", async () => {
+  it("normalizes AI-upscaled output to promised print dimensions", async () => {
     const provider = new MockImageProvider();
     const [source] = await provider.generate({
       prompt: "minimalist mountain landscape",
@@ -101,16 +101,26 @@ describe("print pack builder", () => {
     expect(result.files.map((file) => file.ratioKey)).toEqual(["2x3", "3x4"]);
     expect(result.files[0]).toMatchObject({
       ratioKey: "2x3",
-      width: 1728,
-      height: 2592,
+      fileName: "2x3_24x36in_300dpi.jpg",
+      width: 7200,
+      height: 10800,
       upscaleProvider: "recording-upscale"
     });
-    expect(result.upscaleUsage?.mode).toBe("per-ratio");
-    expect(result.warnings).toEqual(
-      expect.arrayContaining([expect.stringContaining("AI upscale finished")])
+    expect(result.files[1]).toMatchObject({
+      ratioKey: "3x4",
+      fileName: "3x4_18x24in_300dpi.jpg",
+      width: 5400,
+      height: 7200,
+      upscaleProvider: "recording-upscale"
+    });
+    expect(result.files.map((file) => file.fileName)).not.toEqual(
+      expect.arrayContaining([expect.stringContaining("ai-upscaled")])
     );
-    expect(result.warnings).toHaveLength(1);
-  }, 20_000);
+    expect(result.upscaleUsage?.mode).toBe("per-ratio");
+    expect(
+      result.warnings.some((warning) => warning.includes("native pixel size"))
+    ).toBe(false);
+  }, 60_000);
 
   it("uses ratio-specific generated sources when they are available", async () => {
     const provider = new MockImageProvider();
