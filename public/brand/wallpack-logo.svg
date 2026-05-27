@@ -1,11 +1,9 @@
 <svg width="920" height="220" viewBox="0 0 920 220" fill="none" xmlns="http://www.w3.org/2000/svg">
   <title>WallPack AI logo</title>
   <rect x="10" y="10" width="200" height="200" rx="50" fill="#1F5138"/>
-  <rect x="55" y="70" width="55" height="85" rx="10" fill="#F8F7F4" opacity="0.7"/>
-  <rect x="85" y="50" width="80" height="115" rx="12" fill="#F8F7F4"/>
-  <circle cx="139" cy="79" r="9" fill="#B26743"/>
-  <path d="M102 143L122 103L141 143H102Z" fill="#1F5138"/>
-  <path d="M125 143L143 111L161 143H125Z" fill="#1F5138"/>
+  <circle cx="145" cy="69" r="11" fill="#B26743"/>
+  <path d="M53 158C69 132 82 108 96 89C100 84 107 84 111 89C125 110 140 133 155 158H53Z" fill="#F8F7F4"/>
+  <path d="M105 158C117 138 129 119 141 103C145 99 152 99 156 103C167 119 178 138 190 158H105Z" fill="#F8F7F4"/>
   <text x="250" y="137" fill="#171717" font-family="Geist, Inter, ui-sans-serif, system-ui, sans-serif" font-size="76" font-weight="700" letter-spacing="0">WallPack</text>
   <text x="621" y="137" fill="#B26743" font-family="Geist, Inter, ui-sans-serif, system-ui, sans-serif" font-size="76" font-weight="700" letter-spacing="0">AI</text>
 </svg>

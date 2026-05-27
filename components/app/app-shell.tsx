@@ -9,7 +9,6 @@ import {
 import Link from "next/link";
 
 import { AuthGate } from "@/components/auth/auth-gate";
-import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 
 const navItems = [
@@ -26,13 +25,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-[calc(100svh-4rem)] bg-background">
       <div className="mx-auto grid max-w-7xl gap-0 px-4 sm:px-6 lg:grid-cols-[230px_1fr] lg:px-8">
         <aside className="hidden border-r py-6 pr-5 lg:block">
-          <Link
-            href="/app"
-            aria-label="WallPack AI dashboard"
-            className="mb-6 inline-flex"
-          >
-            <BrandLogo size="sm" decorative />
-          </Link>
           <Button asChild className="w-full justify-start">
             <Link href="/app/new">
               <Plus />

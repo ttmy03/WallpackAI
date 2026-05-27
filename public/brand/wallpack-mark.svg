@@ -1,9 +1,7 @@
 <svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
   <title>WallPack AI mark</title>
   <rect width="512" height="512" rx="128" fill="#1F5138"/>
-  <rect x="115" y="154" width="141" height="218" rx="26" fill="#F8F7F4" opacity="0.7"/>
-  <rect x="192" y="102" width="205" height="295" rx="32" fill="#F8F7F4"/>
-  <circle cx="332" cy="176" r="22" fill="#B26743"/>
-  <path d="M234 339L284 238L332 339H234Z" fill="#1F5138"/>
-  <path d="M292 339L338 257L384 339H292Z" fill="#1F5138"/>
+  <circle cx="346" cy="151" r="28" fill="#B26743"/>
+  <path d="M110 378C150 311 185 252 220 201C229 188 247 188 256 201C293 254 330 314 369 378H110Z" fill="#F8F7F4"/>
+  <path d="M242 378C273 326 303 278 333 239C342 228 359 228 368 239C397 279 425 326 455 378H242Z" fill="#F8F7F4"/>
 </svg>

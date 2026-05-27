@@ -89,9 +89,8 @@ function WallPackMark({
   tone: BrandLogoTone;
 }) {
   const surface = tone === "inverse" ? "#f8f7f4" : "var(--primary)";
-  const sheet =
+  const mountain =
     tone === "inverse" ? "var(--primary)" : "var(--primary-foreground)";
-  const mountain = tone === "inverse" ? "#f8f7f4" : "var(--primary)";
 
   return (
     <svg
@@ -101,19 +100,15 @@ function WallPackMark({
       className={cn("shrink-0", className)}
     >
       <rect width="40" height="40" rx="10" fill={surface} />
-      <rect
-        x="9"
-        y="12"
-        width="11"
-        height="17"
-        rx="2"
-        fill={sheet}
-        opacity="0.7"
+      <circle cx="27" cy="11.8" r="2.2" fill="var(--accent)" />
+      <path
+        d="M8.6 29.5c3.1-5.2 5.8-9.8 8.6-13.8.7-1 2.1-1 2.8 0 2.9 4.1 5.8 8.8 8.8 13.8z"
+        fill={mountain}
       />
-      <rect x="15" y="8" width="16" height="23" rx="2.5" fill={sheet} />
-      <circle cx="25.9" cy="13.8" r="1.7" fill="var(--accent)" />
-      <path d="M18.2 26.6 22 18.7l3.7 7.9z" fill={mountain} />
-      <path d="M22.7 26.6 26.2 20.2l3.6 6.4z" fill={mountain} />
+      <path
+        d="M18.9 29.5c2.4-4 4.7-7.8 7-10.8.7-.9 2-.9 2.7 0 2.3 3.1 4.4 6.8 6.8 10.8z"
+        fill={mountain}
+      />
     </svg>
   );
 }
