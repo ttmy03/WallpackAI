@@ -22,7 +22,17 @@ export async function requireAppUser(
   request: Request,
   action: string
 ): Promise<AuthenticatedAppRequest> {
-  const user = await getFirebaseUserFromRequest(request).catch(() => null);
+  let user;
+
+  try {
+    user = await getFirebaseUserFromRequest(request);
+  } catch (error) {
+    if (isFirebaseAdminConfigurationError(error)) {
+      return firebaseAdminConfigurationResponse();
+    }
+
+    user = null;
+  }
 
   if (!user) {
     return {
@@ -54,8 +64,54 @@ export async function requireAppUser(
     };
   }
 
+  let firestoreUser: FirestoreUser;
+
+  try {
+    firestoreUser = await upsertFirestoreUserFromSession(user);
+  } catch (error) {
+    if (isFirebaseAdminConfigurationError(error)) {
+      return firebaseAdminConfigurationResponse();
+    }
+
+    throw error;
+  }
+
   return {
     ok: true,
-    firestoreUser: await upsertFirestoreUserFromSession(user)
+    firestoreUser
+  };
+}
+
+function isFirebaseAdminConfigurationError(error: unknown) {
+  const code = getErrorCode(error);
+  const message = error instanceof Error ? error.message : "";
+
+  return (
+    code === "app/invalid-credential" ||
+    code === "app/invalid-app-options" ||
+    message.includes("Could not load the default credentials") ||
+    message.includes("Unable to detect a Project Id")
+  );
+}
+
+function getErrorCode(error: unknown) {
+  if (!error || typeof error !== "object" || !("code" in error)) {
+    return null;
+  }
+
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : null;
+}
+
+function firebaseAdminConfigurationResponse(): AuthenticatedAppRequest {
+  return {
+    ok: false,
+    response: NextResponse.json(
+      fail(
+        "FIREBASE_ADMIN_NOT_CONFIGURED",
+        "Local API routes need Firebase Admin credentials. Set FIREBASE_SERVICE_ACCOUNT_JSON or run Google application-default auth for project wallpackai."
+      ),
+      { status: 500 }
+    )
   };
 }

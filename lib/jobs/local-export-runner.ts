@@ -44,7 +44,10 @@ import {
   type PrintRatioPresetKey
 } from "@/lib/print/presets";
 import { STYLE_PRESETS } from "@/lib/prompts/presets";
-import { getStorageProvider } from "@/lib/storage";
+import {
+  createOptionalSignedDownloadUrl,
+  getStorageProvider
+} from "@/lib/storage";
 
 type LocalExportJob = {
   id: string;
@@ -192,6 +195,37 @@ export async function getLocalExportJobForUser(jobId: string, userId: string) {
   );
 
   return expireStalePersistedExportJob(settledJob, userId);
+}
+
+export async function downloadLocalExportArtifactForUser(input: {
+  jobId: string;
+  artifactId: string;
+  userId: string;
+}) {
+  const job = await getLocalExportJobForUser(input.jobId, input.userId);
+
+  if (!job) {
+    return null;
+  }
+
+  const artifact =
+    job.artifacts.find(
+      (candidate) => candidate.artifactId === input.artifactId
+    ) ?? null;
+
+  if (!artifact) {
+    return null;
+  }
+
+  const object = await getStorageProvider().downloadObject(
+    artifact.storagePath
+  );
+
+  return {
+    fileName: artifact.fileName,
+    contentType: artifact.contentType || object.contentType,
+    bytes: object.bytes
+  };
 }
 
 export async function retryLocalExportJob(jobId: string, userId: string) {
@@ -948,10 +982,9 @@ async function uploadPartitionedZips(input: {
       }
     });
 
-    const signedUrl = await getStorageProvider().createSignedDownloadUrl(
-      storagePath,
-      { ttlSeconds: 60 * 60 }
-    );
+    const signedUrl = await createOptionalSignedDownloadUrl(storagePath, {
+      ttlSeconds: 60 * 60
+    });
     const ratioKeys = upload.files
       .map((file) =>
         input.printFiles.find(
@@ -972,8 +1005,8 @@ async function uploadPartitionedZips(input: {
       contentType: "application/zip",
       bytes: zipBytes.byteLength,
       ratioKeys,
-      downloadUrl: signedUrl.url,
-      downloadUrlExpiresAt: signedUrl.expiresAt.toISOString(),
+      downloadUrl: signedUrl?.url,
+      downloadUrlExpiresAt: signedUrl?.expiresAt.toISOString(),
       createdAt: new Date().toISOString()
     });
   }

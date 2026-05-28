@@ -4,7 +4,7 @@
 
 ```bash
 # App
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_APP_URL=http://localhost:3100
 NODE_ENV=development
 
 # Database
@@ -23,7 +23,7 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=
 # Firebase Admin SDK
 # Prefer a base64-encoded service account JSON in production secrets.
 FIREBASE_SERVICE_ACCOUNT_JSON=
-FIREBASE_PROJECT_ID=
+FIREBASE_PROJECT_ID=wallpackai
 FIREBASE_CLIENT_EMAIL=
 FIREBASE_PRIVATE_KEY=
 
@@ -68,6 +68,11 @@ npm run db:generate
 npm run db:migrate
 npm run dev
 ```
+
+Local API routes verify Firebase ID tokens and read Firestore through Firebase
+Admin. For local development, either set `FIREBASE_SERVICE_ACCOUNT_JSON` to a
+service account JSON value/base64 value, or authenticate Application Default
+Credentials for the `wallpackai` project before starting `npm run dev`.
 
 Suggested scripts:
 
@@ -138,7 +143,7 @@ Image generation is temporarily unavailable. Existing exports are still accessib
 Use Stripe CLI:
 
 ```bash
-stripe listen --forward-to localhost:3000/api/stripe/webhook
+stripe listen --forward-to localhost:3100/api/stripe/webhook
 ```
 
 Copy webhook signing secret into `.env.local`.

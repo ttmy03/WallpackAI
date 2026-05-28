@@ -13,9 +13,18 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties
+} from "react";
 
-import { fetchAuthenticatedApi } from "@/components/app/authenticated-api";
+import {
+  fetchAuthenticatedApi,
+  fetchAuthenticatedBlob
+} from "@/components/app/authenticated-api";
 import {
   AppErrorState,
   AppLoadingState
@@ -56,11 +65,18 @@ import {
   PRINT_RATIO_PRESETS,
   type PrintRatioPresetKey
 } from "@/lib/print/presets";
+import { cn } from "@/lib/utils";
 
 type ActionState = {
   message: string | null;
   error: string | null;
   pending: "delete" | "export" | "generate" | null;
+};
+
+type PreviewFrameStyle = CSSProperties & {
+  "--preview-desktop-max-width": string;
+  "--preview-ratio-height": string;
+  "--preview-ratio-width": string;
 };
 
 type QueueGenerationResponse = {
@@ -320,11 +336,13 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     selectedDimensionPreview?.sourceWidth ?? selectedArtwork?.width ?? 0;
   const selectedSourceHeight =
     selectedDimensionPreview?.sourceHeight ?? selectedArtwork?.height ?? 0;
-  const selectedPreviewFrameStyle = {
-    aspectRatio: `${selectedRatioPreset.ratioWidth} / ${selectedRatioPreset.ratioHeight}`,
-    maxWidth: `min(100%, ${Math.round(
+  const selectedPreviewFrameStyle: PreviewFrameStyle = {
+    "--preview-desktop-max-width": `${Math.round(
       (720 * selectedRatioPreset.ratioWidth) / selectedRatioPreset.ratioHeight
-    )}px)`
+    )}px`,
+    "--preview-ratio-height": selectedRatioPreset.ratioHeight.toString(),
+    "--preview-ratio-width": selectedRatioPreset.ratioWidth.toString(),
+    aspectRatio: `${selectedRatioPreset.ratioWidth} / ${selectedRatioPreset.ratioHeight}`
   };
 
   async function runAction(
@@ -552,236 +570,60 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
         onClose={() => setShowExportUpsell(false)}
       />
 
-      <div className="mt-8 grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)_360px]">
-        <Card>
-          <CardHeader>
-            <div className="grid gap-3">
-              <div>
-                <CardTitle>Artwork</CardTitle>
-                <CardDescription>Generated variants</CardDescription>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-auto min-h-9 w-full whitespace-normal px-2 py-2 text-center leading-tight"
-                disabled={!canGenerateVariant}
-                onClick={() => void startVariantGeneration()}
-                title="Generate one additional 5-ratio artwork variant."
-              >
-                {action.pending === "generate" || generationRunning ? (
-                  <Loader2 className="animate-spin" />
-                ) : (
-                  <Sparkles />
-                )}
-                <span className="min-w-0">Add 5-Ratio Variant</span>
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            {detail.artworks.length > 0 ? (
-              detail.artworks.map((artwork) => (
-                <ArtworkButton
-                  key={artwork.artworkId}
-                  artwork={artwork}
-                  selected={selectedArtwork?.artworkId === artwork.artworkId}
-                  onSelect={() => setSelectedArtworkId(artwork.artworkId)}
-                />
-              ))
-            ) : (
-              <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                No generated artwork yet.
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      <div className="mt-6 grid gap-4 xl:mt-8 xl:grid-cols-[220px_minmax(0,1fr)_360px] xl:gap-6">
+        <div className="order-2 min-w-0 xl:order-1">
+          <ArtworkSelectorPanel
+            artworks={detail.artworks}
+            selectedArtworkId={selectedArtwork?.artworkId ?? null}
+            canGenerateVariant={canGenerateVariant}
+            generationRunning={generationRunning}
+            actionPending={action.pending}
+            onGenerateVariant={() => void startVariantGeneration()}
+            onSelectArtwork={setSelectedArtworkId}
+          />
+        </div>
 
-        <section className="min-w-0 rounded-lg border bg-card p-4">
-          {selectedArtwork && selectedArtworkSrc ? (
-            <figure>
-              <div
-                className="relative mx-auto w-full overflow-hidden rounded-md bg-secondary"
-                style={selectedPreviewFrameStyle}
-              >
-                <Image
-                  src={selectedArtworkSrc}
-                  alt=""
-                  fill
-                  unoptimized
-                  aria-hidden="true"
-                  className="scale-110 object-cover opacity-70 blur-2xl"
-                />
-                <Image
-                  src={selectedArtworkSrc}
-                  alt="Selected generated wall-art preview"
-                  fill
-                  unoptimized
-                  className="object-contain"
-                />
-                <div className="absolute bottom-4 left-4 rounded-md bg-black/50 px-3 py-2 text-sm text-white backdrop-blur">
-                  {selectedRatioPreset.label} · {selectedRatioPixels.width} x{" "}
-                  {selectedRatioPixels.height} px
-                </div>
-              </div>
-              <figcaption className="mt-4 text-sm text-muted-foreground">
-                Generated source: {selectedSourceWidth} x {selectedSourceHeight}{" "}
-                px. Export preview: {selectedRatioPreset.masterPrintWidthIn} x{" "}
-                {selectedRatioPreset.masterPrintHeightIn} in @{" "}
-                {selectedRatioPreset.targetDpi} DPI.
-              </figcaption>
-            </figure>
-          ) : selectedArtwork ? (
-            <div
-              className="mx-auto grid w-full place-items-center rounded-md border border-dashed text-sm text-muted-foreground"
-              style={selectedPreviewFrameStyle}
-            >
-              Preview URL is unavailable.
-            </div>
-          ) : (
-            <div
-              className="mx-auto grid w-full place-items-center rounded-md border border-dashed text-sm text-muted-foreground"
-              style={selectedPreviewFrameStyle}
-            >
-              Generate a preview to start editing this project.
-            </div>
-          )}
-
-          {latestJob ? (
-            <div className="mt-4 rounded-md border p-4 text-sm">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="font-medium">Latest generation job</p>
-                <Badge variant={generationStatusVariant(latestJob.status)}>
-                  {latestJob.status}
-                </Badge>
-              </div>
-              <p className="mt-2 text-muted-foreground">
-                {latestJob.stage ?? "queued"} · {latestJob.creditCost} credits ·{" "}
-                {formatAppDate(latestJob.createdAt)}
-              </p>
-              {latestJob.errorMessage ? (
-                <div className="mt-3 grid gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2">
-                  <p className="text-destructive">{latestJob.errorMessage}</p>
-                  {latestJob.retryable ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="w-fit"
-                      disabled={action.pending !== null}
-                      onClick={() => void retryGeneration(latestJob.jobId)}
-                    >
-                      <RefreshCw />
-                      Retry generation
-                    </Button>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {latestExportJob ? (
-            <ExportJobPanel
-              job={latestExportJob}
-              onRetry={retryExport}
-              retryDisabled={action.pending !== null}
-            />
-          ) : null}
+        <section className="order-1 min-w-0 rounded-lg border bg-card p-3 sm:p-4 xl:order-2">
+          <SelectedArtworkPreview
+            selectedArtwork={selectedArtwork}
+            selectedArtworkSrc={selectedArtworkSrc}
+            selectedRatioPreset={selectedRatioPreset}
+            selectedRatioPixels={selectedRatioPixels}
+            selectedSourceWidth={selectedSourceWidth}
+            selectedSourceHeight={selectedSourceHeight}
+            frameStyle={selectedPreviewFrameStyle}
+          />
+          <JobStatusPanels
+            className="mt-4 hidden xl:grid"
+            latestJob={latestJob}
+            latestExportJob={latestExportJob}
+            retryDisabled={action.pending !== null}
+            onRetryGeneration={(jobId) => void retryGeneration(jobId)}
+            onRetryExport={(jobId) => void retryExport(jobId)}
+          />
         </section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Print sizes</CardTitle>
-            <CardDescription>
-              Automatically prepared for this project
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            <div className="rounded-md border bg-secondary/40 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="font-medium">{selectedRatioPreset.label}</p>
-                <Badge variant="secondary">{selectedRatioKey}</Badge>
-              </div>
-              <dl className="mt-3 grid gap-2 text-sm">
-                <div>
-                  <dt className="text-muted-foreground">Print Size</dt>
-                  <dd>
-                    {formatInches(selectedRatioPreset.masterPrintWidthIn)} x{" "}
-                    {formatInches(selectedRatioPreset.masterPrintHeightIn)} in @{" "}
-                    {selectedRatioPreset.targetDpi} DPI
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Target file</dt>
-                  <dd className="font-mono">
-                    {selectedRatioPixels.width} x {selectedRatioPixels.height}{" "}
-                    px
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Filename</dt>
-                  <dd className="break-all font-mono text-xs">
-                    {selectedRatioPreset.fileName}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">
-                    Included Print Sizes
-                  </dt>
-                  <dd className="mt-1 flex flex-wrap gap-1.5">
-                    {selectedRatioPreset.supportedPrintSizes.map((size) => (
-                      <Badge key={size} variant="secondary">
-                        {size}
-                      </Badge>
-                    ))}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-            {projectRatioKeys.map((key) => {
-              const preset = PRINT_RATIO_PRESETS[key];
-              const pixels = presetKeyToPixels(key);
+        <div className="order-3 min-w-0 xl:order-3">
+          <PrintSizesPanel
+            projectRatioKeys={projectRatioKeys}
+            selectedRatioKey={selectedRatioKey}
+            selectedRatioPreset={selectedRatioPreset}
+            selectedRatioPixels={selectedRatioPixels}
+            latestExportFiles={latestExportJob?.files ?? []}
+            onSelectRatio={setSelectedRatioKey}
+          />
+        </div>
 
-              return (
-                <RatioPreviewButton
-                  key={key}
-                  presetKey={key}
-                  label={preset.label}
-                  printSize={`${formatInches(preset.masterPrintWidthIn)} x ${formatInches(
-                    preset.masterPrintHeightIn
-                  )} in @ ${preset.targetDpi} DPI`}
-                  pixels={`${pixels.width} x ${pixels.height} px`}
-                  selected={selectedRatioKey === key}
-                  onSelect={() => setSelectedRatioKey(key)}
-                />
-              );
-            })}
-            {latestExportJob?.files.length ? (
-              <div className="rounded-md border p-4 text-sm">
-                <p className="font-medium">Last export files</p>
-                <div className="mt-3 grid gap-2">
-                  {latestExportJob.files.map((file) => (
-                    <div
-                      key={file.fileName}
-                      className="flex min-w-0 flex-col gap-1 rounded-md border bg-background px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
-                    >
-                      <span className="min-w-0">
-                        <span className="block break-all font-mono text-xs">
-                          {file.fileName}
-                        </span>
-                        <span className="mt-1 block text-xs text-muted-foreground">
-                          {file.width} x {file.height} px
-                        </span>
-                      </span>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {formatBytes(file.bytes)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
+        <div className="order-4 grid gap-4 xl:hidden">
+          <JobStatusPanels
+            latestJob={latestJob}
+            latestExportJob={latestExportJob}
+            retryDisabled={action.pending !== null}
+            onRetryGeneration={(jobId) => void retryGeneration(jobId)}
+            onRetryExport={(jobId) => void retryExport(jobId)}
+          />
+          <LastExportFilesPanel files={latestExportJob?.files ?? []} />
+        </div>
       </div>
     </main>
   );
@@ -814,18 +656,360 @@ function getDimensionPreviewSrc(
   return preview?.dataUrl ?? preview?.previewUrl ?? null;
 }
 
+function SelectedArtworkPreview({
+  selectedArtwork,
+  selectedArtworkSrc,
+  selectedRatioPreset,
+  selectedRatioPixels,
+  selectedSourceWidth,
+  selectedSourceHeight,
+  frameStyle
+}: {
+  selectedArtwork: GeneratedArtworkPreview | null;
+  selectedArtworkSrc: string | null;
+  selectedRatioPreset: (typeof PRINT_RATIO_PRESETS)[PrintRatioPresetKey];
+  selectedRatioPixels: { width: number; height: number };
+  selectedSourceWidth: number;
+  selectedSourceHeight: number;
+  frameStyle: CSSProperties;
+}) {
+  const frameClassName =
+    "relative mx-auto w-full max-w-[min(100%,calc(54svh*var(--preview-ratio-width)/var(--preview-ratio-height)),var(--preview-desktop-max-width))] overflow-hidden rounded-md bg-secondary xl:max-w-[min(100%,var(--preview-desktop-max-width))]";
+
+  if (selectedArtwork && selectedArtworkSrc) {
+    return (
+      <figure>
+        <div className={frameClassName} style={frameStyle}>
+          <Image
+            src={selectedArtworkSrc}
+            alt=""
+            fill
+            unoptimized
+            aria-hidden="true"
+            className="scale-110 object-cover opacity-70 blur-2xl"
+          />
+          <Image
+            src={selectedArtworkSrc}
+            alt="Selected generated wall-art preview"
+            fill
+            unoptimized
+            className="object-contain"
+          />
+          <div className="absolute bottom-3 left-3 max-w-[calc(100%-1.5rem)] rounded-md bg-black/50 px-2.5 py-1.5 text-xs text-white backdrop-blur sm:bottom-4 sm:left-4 sm:max-w-[calc(100%-2rem)] sm:px-3 sm:py-2 sm:text-sm">
+            <span className="block truncate">
+              {selectedRatioPreset.label} · {selectedRatioPixels.width} x{" "}
+              {selectedRatioPixels.height} px
+            </span>
+          </div>
+        </div>
+        <figcaption className="mt-3 text-xs text-muted-foreground sm:text-sm xl:mt-4">
+          Generated source: {selectedSourceWidth} x {selectedSourceHeight} px.
+          Export preview: {selectedRatioPreset.masterPrintWidthIn} x{" "}
+          {selectedRatioPreset.masterPrintHeightIn} in @{" "}
+          {selectedRatioPreset.targetDpi} DPI.
+        </figcaption>
+      </figure>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        frameClassName,
+        "grid min-h-[240px] place-items-center border border-dashed px-4 text-center text-sm text-muted-foreground sm:min-h-[280px] xl:min-h-0"
+      )}
+      style={frameStyle}
+    >
+      {selectedArtwork
+        ? "Preview URL is unavailable."
+        : "Generate a preview to start editing this project."}
+    </div>
+  );
+}
+
+function ArtworkSelectorPanel({
+  artworks,
+  selectedArtworkId,
+  canGenerateVariant,
+  generationRunning,
+  actionPending,
+  onGenerateVariant,
+  onSelectArtwork
+}: {
+  artworks: GeneratedArtworkPreview[];
+  selectedArtworkId: string | null;
+  canGenerateVariant: boolean;
+  generationRunning: boolean;
+  actionPending: ActionState["pending"];
+  onGenerateVariant: () => void;
+  onSelectArtwork: (artworkId: string) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader className="p-4 xl:p-5">
+        <div className="flex items-start justify-between gap-3 xl:grid xl:gap-3">
+          <div>
+            <CardTitle>Artwork</CardTitle>
+            <CardDescription>Generated variants</CardDescription>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 shrink-0 px-3 xl:h-auto xl:min-h-9 xl:w-full xl:whitespace-normal xl:px-2 xl:py-2 xl:text-center xl:leading-tight"
+            disabled={!canGenerateVariant}
+            onClick={onGenerateVariant}
+            title="Generate one additional 5-ratio artwork variant."
+          >
+            {actionPending === "generate" || generationRunning ? (
+              <Loader2 className="animate-spin" />
+            ) : (
+              <Sparkles />
+            )}
+            <span className="xl:hidden">Add variant</span>
+            <span className="hidden min-w-0 xl:inline">
+              Add 5-Ratio Variant
+            </span>
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="p-4 pt-0 xl:p-5 xl:pt-0">
+        {artworks.length > 0 ? (
+          <>
+            <div className="-mx-4 overflow-x-auto px-4 pb-1 xl:hidden">
+              <div className="flex w-max gap-2">
+                {artworks.map((artwork) => (
+                  <ArtworkThumbnailButton
+                    key={artwork.artworkId}
+                    artwork={artwork}
+                    selected={selectedArtworkId === artwork.artworkId}
+                    onSelect={() => onSelectArtwork(artwork.artworkId)}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="hidden gap-3 xl:grid">
+              {artworks.map((artwork) => (
+                <ArtworkButton
+                  key={artwork.artworkId}
+                  artwork={artwork}
+                  selected={selectedArtworkId === artwork.artworkId}
+                  onSelect={() => onSelectArtwork(artwork.artworkId)}
+                />
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+            No generated artwork yet.
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ArtworkThumbnailButton({
+  artwork,
+  selected,
+  onSelect
+}: {
+  artwork: GeneratedArtworkPreview;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const src = getArtworkPreviewSrc(artwork);
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        "relative size-16 shrink-0 overflow-hidden rounded-md border bg-secondary text-left transition hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        selected ? "border-primary ring-2 ring-primary/25" : ""
+      )}
+      aria-label={`Select artwork ${artwork.artworkId}`}
+      aria-pressed={selected}
+    >
+      {src ? (
+        <Image
+          src={src}
+          alt=""
+          fill
+          sizes="64px"
+          unoptimized
+          className="object-cover"
+        />
+      ) : (
+        <span className="grid size-full place-items-center px-1 text-center text-[10px] text-muted-foreground">
+          No preview
+        </span>
+      )}
+    </button>
+  );
+}
+
+function PrintSizesPanel({
+  projectRatioKeys,
+  selectedRatioKey,
+  selectedRatioPreset,
+  selectedRatioPixels,
+  latestExportFiles,
+  onSelectRatio
+}: {
+  projectRatioKeys: PrintRatioPresetKey[];
+  selectedRatioKey: PrintRatioPresetKey;
+  selectedRatioPreset: (typeof PRINT_RATIO_PRESETS)[PrintRatioPresetKey];
+  selectedRatioPixels: { width: number; height: number };
+  latestExportFiles: ExportJobView["files"];
+  onSelectRatio: (ratioKey: PrintRatioPresetKey) => void;
+}) {
+  return (
+    <>
+      <Card className="xl:hidden">
+        <CardHeader className="p-4">
+          <CardTitle>Print sizes</CardTitle>
+          <CardDescription>Choose an Etsy ratio</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 p-4 pt-0">
+          <div className="-mx-4 overflow-x-auto px-4 pb-1">
+            <div className="flex w-max gap-2">
+              {projectRatioKeys.map((key) => {
+                const preset = PRINT_RATIO_PRESETS[key];
+
+                return (
+                  <RatioChipButton
+                    key={key}
+                    presetKey={key}
+                    label={preset.label}
+                    selected={selectedRatioKey === key}
+                    onSelect={() => onSelectRatio(key)}
+                  />
+                );
+              })}
+            </div>
+          </div>
+          <SelectedRatioSummary
+            selectedRatioKey={selectedRatioKey}
+            selectedRatioPreset={selectedRatioPreset}
+            selectedRatioPixels={selectedRatioPixels}
+            compact
+          />
+        </CardContent>
+      </Card>
+
+      <Card className="hidden xl:block">
+        <CardHeader>
+          <CardTitle>Print sizes</CardTitle>
+          <CardDescription>Selected ratio and export pixels</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          <SelectedRatioSummary
+            selectedRatioKey={selectedRatioKey}
+            selectedRatioPreset={selectedRatioPreset}
+            selectedRatioPixels={selectedRatioPixels}
+          />
+          {projectRatioKeys.map((key) => {
+            const preset = PRINT_RATIO_PRESETS[key];
+
+            return (
+              <RatioPreviewButton
+                key={key}
+                presetKey={key}
+                label={preset.label}
+                printSize={formatPrintSize(preset)}
+                selected={selectedRatioKey === key}
+                onSelect={() => onSelectRatio(key)}
+              />
+            );
+          })}
+          <LastExportFilesPanel files={latestExportFiles} />
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+function SelectedRatioSummary({
+  selectedRatioKey,
+  selectedRatioPreset,
+  selectedRatioPixels,
+  compact = false
+}: {
+  selectedRatioKey: PrintRatioPresetKey;
+  selectedRatioPreset: (typeof PRINT_RATIO_PRESETS)[PrintRatioPresetKey];
+  selectedRatioPixels: { width: number; height: number };
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-md border bg-secondary/40",
+        compact ? "p-3" : "p-4"
+      )}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-medium">{selectedRatioPreset.label}</p>
+        <Badge variant="secondary">{selectedRatioKey}</Badge>
+      </div>
+      <dl
+        className={cn(
+          "mt-3 grid gap-2 text-sm",
+          compact ? "grid-cols-2 gap-x-3" : ""
+        )}
+      >
+        <div>
+          <dt className="text-muted-foreground">Print Size</dt>
+          <dd>{formatPrintSize(selectedRatioPreset)}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Export pixels</dt>
+          <dd className="font-mono">
+            {selectedRatioPixels.width} x {selectedRatioPixels.height} px
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+function RatioChipButton({
+  presetKey,
+  label,
+  selected,
+  onSelect
+}: {
+  presetKey: PrintRatioPresetKey;
+  label: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onSelect}
+      className={cn(
+        "inline-flex h-10 shrink-0 items-center gap-2 rounded-md border bg-background px-3 text-sm transition hover:border-primary hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        selected ? "border-primary bg-primary/10 ring-2 ring-primary/25" : ""
+      )}
+    >
+      <span className="font-medium">{presetKey}</span>
+      <span className="text-muted-foreground">{label}</span>
+    </button>
+  );
+}
+
 function RatioPreviewButton({
   presetKey,
   label,
   printSize,
-  pixels,
   selected,
   onSelect
 }: {
   presetKey: PrintRatioPresetKey;
   label: string;
   printSize: string;
-  pixels: string;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -845,7 +1029,6 @@ function RatioPreviewButton({
       <span className="mt-2 block text-sm text-muted-foreground">
         {printSize}
       </span>
-      <span className="mt-1 block font-mono text-sm">{pixels}</span>
     </button>
   );
 }
@@ -859,7 +1042,7 @@ function ArtworkButton({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const src = artwork.dataUrl ?? artwork.previewUrl;
+  const src = getArtworkPreviewSrc(artwork);
 
   return (
     <button
@@ -899,6 +1082,97 @@ function ArtworkButton({
   );
 }
 
+function getArtworkPreviewSrc(artwork: GeneratedArtworkPreview) {
+  return (
+    artwork.dataUrl ??
+    artwork.previewUrl ??
+    artwork.dimensionPreviews?.[0]?.dataUrl ??
+    artwork.dimensionPreviews?.[0]?.previewUrl
+  );
+}
+
+function JobStatusPanels({
+  latestJob,
+  latestExportJob,
+  retryDisabled,
+  onRetryGeneration,
+  onRetryExport,
+  className
+}: {
+  latestJob: GenerationJobView | null;
+  latestExportJob: ExportJobView | null;
+  retryDisabled: boolean;
+  onRetryGeneration: (jobId: string) => void;
+  onRetryExport: (jobId: string) => void;
+  className?: string;
+}) {
+  if (!latestJob && !latestExportJob) {
+    return null;
+  }
+
+  return (
+    <div className={cn("grid gap-4", className)}>
+      {latestJob ? (
+        <GenerationJobPanel
+          job={latestJob}
+          retryDisabled={retryDisabled}
+          onRetry={onRetryGeneration}
+        />
+      ) : null}
+      {latestExportJob ? (
+        <ExportJobPanel
+          job={latestExportJob}
+          onRetry={onRetryExport}
+          retryDisabled={retryDisabled}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function GenerationJobPanel({
+  job,
+  onRetry,
+  retryDisabled
+}: {
+  job: GenerationJobView;
+  onRetry: (jobId: string) => void;
+  retryDisabled: boolean;
+}) {
+  return (
+    <div className="rounded-md border p-4 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="font-medium">Latest generation job</p>
+        <Badge variant={generationStatusVariant(job.status)}>
+          {job.status}
+        </Badge>
+      </div>
+      <p className="mt-2 text-muted-foreground">
+        {job.stage ?? "queued"} · {job.creditCost} credits ·{" "}
+        {formatAppDate(job.createdAt)}
+      </p>
+      {job.errorMessage ? (
+        <div className="mt-3 grid gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2">
+          <p className="text-destructive">{job.errorMessage}</p>
+          {job.retryable ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-fit"
+              disabled={retryDisabled}
+              onClick={() => onRetry(job.jobId)}
+            >
+              <RefreshCw />
+              Retry generation
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ExportJobPanel({
   job,
   onRetry,
@@ -908,10 +1182,41 @@ function ExportJobPanel({
   onRetry: (jobId: string) => void;
   retryDisabled: boolean;
 }) {
+  const [downloadState, setDownloadState] = useState<{
+    artifactId: string | null;
+    error: string | null;
+  }>({ artifactId: null, error: null });
   const running = !TERMINAL_EXPORT_STATUSES.has(job.status);
+  const warnings = compactExportWarnings(job.warnings);
+
+  async function downloadArtifact(artifact: ExportJobView["artifacts"][number]) {
+    setDownloadState({ artifactId: artifact.artifactId, error: null });
+
+    try {
+      const response = await fetchAuthenticatedBlob(
+        `/api/app/export-jobs/${encodeURIComponent(
+          job.jobId
+        )}/artifacts/${encodeURIComponent(artifact.artifactId)}/download`
+      );
+
+      triggerBrowserDownload(
+        response.blob,
+        response.fileName ?? artifact.fileName
+      );
+      setDownloadState({ artifactId: null, error: null });
+    } catch (caughtError) {
+      setDownloadState({
+        artifactId: null,
+        error:
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Export file could not be downloaded."
+      });
+    }
+  }
 
   return (
-    <div className="mt-4 rounded-md border p-4 text-sm">
+    <div className="rounded-md border p-4 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="font-medium">Latest export job</p>
@@ -924,9 +1229,14 @@ function ExportJobPanel({
       </div>
 
       {running ? (
-        <div className="mt-4 flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" />
-          Creating print files and Etsy ZIPs.
+        <div className="mt-4 flex items-start gap-2 text-muted-foreground">
+          <Loader2 className="mt-0.5 size-4 animate-spin" />
+          <span>
+            <span className="block">Creating print files and Etsy ZIPs.</span>
+            <span className="block text-xs">
+              Large print files can take a few minutes.
+            </span>
+          </span>
         </div>
       ) : null}
 
@@ -949,42 +1259,104 @@ function ExportJobPanel({
         </div>
       ) : null}
 
-      {job.warnings.length > 0 ? (
+      {warnings.length > 0 ? (
         <div className="mt-3 rounded-md border border-accent/40 bg-accent/10 px-3 py-2">
-          {job.warnings.map((warning) => (
-            <p key={warning}>{warning}</p>
+          {warnings.map((warning, index) => (
+            <p key={`${warning}-${index}`}>{warning}</p>
           ))}
         </div>
       ) : null}
 
+      {downloadState.error ? (
+        <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-destructive">
+          {downloadState.error}
+        </p>
+      ) : null}
+
       {job.artifacts.length > 0 ? (
         <div className="mt-4 grid gap-2">
-          {job.artifacts.map((artifact) => (
-            <Button
-              key={artifact.artifactId}
-              asChild
-              variant="outline"
-              size="sm"
-              className="h-auto min-h-9 w-full min-w-0 flex-col items-stretch justify-between gap-1 whitespace-normal px-3 py-2 text-left sm:flex-row sm:items-center sm:gap-3"
-            >
-              <a
-                href={artifact.downloadUrl}
-                target="_blank"
-                rel="noreferrer"
-                title={artifact.fileName}
+          {job.artifacts.map((artifact) =>
+            artifact.downloadUrl ? (
+              <Button
+                key={artifact.artifactId}
+                asChild
+                variant="outline"
+                size="sm"
+                className="h-auto min-h-9 w-full min-w-0 flex-col items-stretch justify-between gap-1 whitespace-normal px-3 py-2 text-left sm:flex-row sm:items-center sm:gap-3"
+              >
+                <a
+                  href={artifact.downloadUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={artifact.fileName}
+                >
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs sm:text-sm">
+                    {artifact.fileName}
+                  </span>
+                  <span className="inline-flex shrink-0 items-center gap-2 self-end text-muted-foreground sm:self-auto">
+                    {formatBytes(artifact.bytes)}
+                    <Download />
+                  </span>
+                </a>
+              </Button>
+            ) : (
+              <Button
+                key={artifact.artifactId}
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-auto min-h-9 w-full min-w-0 flex-col items-stretch justify-between gap-1 whitespace-normal px-3 py-2 text-left sm:flex-row sm:items-center sm:gap-3"
+                disabled={downloadState.artifactId === artifact.artifactId}
+                onClick={() => void downloadArtifact(artifact)}
               >
                 <span className="min-w-0 flex-1 truncate font-mono text-xs sm:text-sm">
                   {artifact.fileName}
                 </span>
                 <span className="inline-flex shrink-0 items-center gap-2 self-end text-muted-foreground sm:self-auto">
                   {formatBytes(artifact.bytes)}
-                  <Download />
+                  {downloadState.artifactId === artifact.artifactId ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Download />
+                  )}
                 </span>
-              </a>
-            </Button>
-          ))}
+              </Button>
+            )
+          )}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function LastExportFilesPanel({ files }: { files: ExportJobView["files"] }) {
+  if (!files.length) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-md border p-4 text-sm">
+      <p className="font-medium">Last export files</p>
+      <div className="mt-3 grid gap-2">
+        {files.map((file) => (
+          <div
+            key={file.fileName}
+            className="flex min-w-0 flex-col gap-1 rounded-md border bg-background px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+          >
+            <span className="min-w-0">
+              <span className="block break-all font-mono text-xs">
+                {file.fileName}
+              </span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                {file.width} x {file.height} px
+              </span>
+            </span>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {formatBytes(file.bytes)}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1087,6 +1459,68 @@ function getProjectRatioKeys(detail: ProjectDetail) {
     : DEFAULT_AUTOMATIC_PRINT_RATIO_KEYS;
 }
 
+function compactExportWarnings(warnings: string[]) {
+  const enlargementFactors: number[] = [];
+  const otherWarnings: string[] = [];
+
+  for (const warning of warnings) {
+    const match = /^.+ was enlarged (\d+(?:\.\d+)?)x from the working image to reach the selected print size\. (?:Fine detail may look softer at the largest print sizes\.|Review detail quality before listing\.)$/.exec(
+      warning
+    );
+
+    const factor = match ? Number(match[1]) : Number.NaN;
+
+    if (Number.isFinite(factor)) {
+      enlargementFactors.push(factor);
+      continue;
+    }
+
+    otherWarnings.push(warning);
+  }
+
+  if (enlargementFactors.length === 0) {
+    return otherWarnings;
+  }
+
+  const sizeLabel =
+    enlargementFactors.length === 1
+      ? "Selected print size"
+      : `${enlargementFactors.length} print sizes`;
+  const verb = enlargementFactors.length === 1 ? "was" : "were";
+
+  return [
+    `${sizeLabel} ${verb} enlarged ${formatScaleFactorRange(
+      enlargementFactors
+    )}. Check detail before listing.`,
+    ...otherWarnings
+  ];
+}
+
+function formatScaleFactorRange(factors: number[]) {
+  const finiteFactors = factors.filter(Number.isFinite);
+
+  if (finiteFactors.length === 0) {
+    return "";
+  }
+
+  const min = Math.min(...finiteFactors);
+  const max = Math.max(...finiteFactors);
+
+  if (min === max) {
+    return `${min.toFixed(1)}x`;
+  }
+
+  return `${min.toFixed(1)}-${max.toFixed(1)}x`;
+}
+
+function formatPrintSize(
+  preset: (typeof PRINT_RATIO_PRESETS)[PrintRatioPresetKey]
+) {
+  return `${formatInches(preset.masterPrintWidthIn)} x ${formatInches(
+    preset.masterPrintHeightIn
+  )} in`;
+}
+
 function formatInches(value: number) {
   return Number.isInteger(value) ? value.toString() : value.toFixed(1);
 }
@@ -1148,4 +1582,16 @@ function formatBytes(bytes: number) {
   }
 
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function triggerBrowserDownload(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }

@@ -12,7 +12,10 @@ import type {
 } from "@/lib/jobs/generation-types";
 import type { JobStatus } from "@/lib/jobs/job-runner";
 import { isPrintRatioPresetKey } from "@/lib/print/presets";
-import { getStorageProvider } from "@/lib/storage";
+import {
+  createOptionalSignedDownloadUrl,
+  createOptionalStorageDataUrl
+} from "@/lib/storage";
 
 type FirestoreGenerationJobDocument = Omit<GenerationJobView, "artworks"> & {
   userId: string;
@@ -228,11 +231,16 @@ async function artworkPreviewFromDocument(
   );
   const signedUrl =
     previewStoragePath.length > 0
-      ? await getStorageProvider().createSignedDownloadUrl(previewStoragePath)
+      ? await createOptionalSignedDownloadUrl(previewStoragePath)
       : null;
+  const dataUrl =
+    !signedUrl && previewStoragePath.length > 0
+      ? await createOptionalStorageDataUrl(previewStoragePath)
+      : undefined;
 
   return {
     artworkId: id,
+    dataUrl: dataUrl ?? undefined,
     width: numberOrFallback(data.width, 0),
     height: numberOrFallback(data.height, 0),
     mimeType: imageMimeTypeOrFallback(data.mimeType, "image/png"),
@@ -291,13 +299,16 @@ async function artworkDimensionPreviewFromDocument(
 ): Promise<GeneratedArtworkDimensionPreview> {
   const signedUrl =
     data.previewStoragePath.length > 0
-      ? await getStorageProvider().createSignedDownloadUrl(
-          data.previewStoragePath
-        )
+      ? await createOptionalSignedDownloadUrl(data.previewStoragePath)
       : null;
+  const dataUrl =
+    !signedUrl && data.previewStoragePath.length > 0
+      ? await createOptionalStorageDataUrl(data.previewStoragePath)
+      : undefined;
 
   return {
     ratioKey: data.ratioKey,
+    dataUrl: dataUrl ?? undefined,
     sourceStoragePath: data.sourceStoragePath,
     sourceWidth: data.sourceWidth,
     sourceHeight: data.sourceHeight,

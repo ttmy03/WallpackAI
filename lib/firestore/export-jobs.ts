@@ -9,7 +9,7 @@ import type {
   ExportPrintFileView
 } from "@/lib/jobs/export-types";
 import type { JobStatus } from "@/lib/jobs/job-runner";
-import { getStorageProvider } from "@/lib/storage";
+import { createOptionalSignedDownloadUrl } from "@/lib/storage";
 
 type FirestoreExportJobDocument = ExportJobView & {
   userId: string;
@@ -29,10 +29,9 @@ export async function saveFirestoreExportJob(
     userId: options.userId
   };
 
-  await getFirebaseFirestore().doc(exportJobDocumentPath(job.jobId)).set(
-    document,
-    { merge: true }
-  );
+  await getFirebaseFirestore()
+    .doc(exportJobDocumentPath(job.jobId))
+    .set(document, { merge: true });
 }
 
 export async function getFirestoreExportJobForUser(
@@ -62,7 +61,11 @@ export async function getFirestoreExportJobForUser(
 
 export async function listFirestoreExportJobsForUser(
   userId: string,
-  options: { limit?: number; projectId?: string } = {}
+  options: {
+    limit?: number;
+    projectId?: string;
+    includeSignedDownloadUrls?: boolean;
+  } = {}
 ) {
   if (process.env.NODE_ENV === "test") {
     return [];
@@ -77,6 +80,10 @@ export async function listFirestoreExportJobsForUser(
     .filter((job) => !options.projectId || job.projectId === options.projectId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const limited = jobs.slice(0, options.limit ?? 10);
+
+  if (options.includeSignedDownloadUrls === false) {
+    return limited;
+  }
 
   return Promise.all(limited.map(signExportArtifacts));
 }
@@ -141,15 +148,17 @@ function exportArtifactDocument(
 async function signExportArtifacts(job: ExportJobView): Promise<ExportJobView> {
   const artifacts = await Promise.all(
     job.artifacts.map(async (artifact) => {
-      const signedUrl = await getStorageProvider().createSignedDownloadUrl(
+      const signedUrl = await createOptionalSignedDownloadUrl(
         artifact.storagePath,
-        { ttlSeconds: 60 * 60 }
+        {
+          ttlSeconds: 60 * 60
+        }
       );
 
       return {
         ...artifact,
-        downloadUrl: signedUrl.url,
-        downloadUrlExpiresAt: signedUrl.expiresAt.toISOString()
+        downloadUrl: signedUrl?.url,
+        downloadUrlExpiresAt: signedUrl?.expiresAt.toISOString()
       };
     })
   );

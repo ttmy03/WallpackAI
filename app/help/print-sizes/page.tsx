@@ -1,5 +1,15 @@
-import { PRINT_RATIO_PRESETS } from "@/lib/print/presets";
+import {
+  LANDSCAPE_PRINT_RATIO_KEYS,
+  PORTRAIT_PRINT_RATIO_KEYS,
+  PRINT_RATIO_PRESETS,
+  type PrintRatioPresetKey
+} from "@/lib/print/presets";
 import { presetToPixels } from "@/lib/print/math";
+
+const ETSY_PACK_PRINT_RATIO_KEYS: PrintRatioPresetKey[] = [
+  ...PORTRAIT_PRINT_RATIO_KEYS,
+  ...LANDSCAPE_PRINT_RATIO_KEYS
+];
 
 export default function PrintSizesPage() {
   return (
@@ -27,7 +37,8 @@ export default function PrintSizesPage() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {Object.values(PRINT_RATIO_PRESETS).map((preset) => {
+            {ETSY_PACK_PRINT_RATIO_KEYS.map((key) => {
+              const preset = PRINT_RATIO_PRESETS[key];
               const pixels = presetToPixels(preset);
 
               return (

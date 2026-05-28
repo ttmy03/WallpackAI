@@ -19,52 +19,68 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
-  const auth = await requireAppUser(request, "reading projects");
+  try {
+    const auth = await requireAppUser(request, "reading projects");
 
-  if (!auth.ok) {
-    return auth.response;
-  }
+    if (!auth.ok) {
+      return auth.response;
+    }
 
-  const { projectId } = await params;
-  const project = await getFirestoreProjectForUser(
-    auth.firestoreUser.id,
-    projectId
-  );
+    const { projectId } = await params;
+    const project = await getFirestoreProjectForUser(
+      auth.firestoreUser.id,
+      projectId
+    );
 
-  if (!project) {
+    if (!project) {
+      return NextResponse.json(
+        fail("PROJECT_NOT_FOUND", "Project was not found for this account."),
+        { status: 404 }
+      );
+    }
+
+    const generationJobs = await listFirestoreGenerationJobsForUser(
+      auth.firestoreUser.id,
+      { projectId: project.id, limit: 10 }
+    );
+    const latestJobId =
+      project.latestGenerationJobId ?? generationJobs[0]?.jobId;
+    const latestGenerationJob = latestJobId
+      ? await getFirestoreGenerationJobForUser(
+          latestJobId,
+          auth.firestoreUser.id
+        )
+      : null;
+    const artworks = await listFirestoreArtworksForProject(
+      auth.firestoreUser.id,
+      project.id
+    );
+    const exportJobs = await listFirestoreExportJobsForUser(
+      auth.firestoreUser.id,
+      { projectId: project.id, limit: 5 }
+    );
+    const data: ProjectDetail = {
+      plan: await getUserPlanStatus(auth.firestoreUser),
+      project,
+      generationJobs,
+      latestGenerationJob,
+      exportJobs,
+      latestExportJob: exportJobs[0] ?? null,
+      artworks
+    };
+
+    return NextResponse.json(ok(data));
+  } catch (error) {
+    console.error("Project detail API failed", error);
+
     return NextResponse.json(
-      fail("PROJECT_NOT_FOUND", "Project was not found for this account."),
-      { status: 404 }
+      fail(
+        "PROJECT_LOAD_FAILED",
+        "Project data could not be loaded. Check the local dev server logs for details."
+      ),
+      { status: 500 }
     );
   }
-
-  const generationJobs = await listFirestoreGenerationJobsForUser(
-    auth.firestoreUser.id,
-    { projectId: project.id, limit: 10 }
-  );
-  const latestJobId = project.latestGenerationJobId ?? generationJobs[0]?.jobId;
-  const latestGenerationJob = latestJobId
-    ? await getFirestoreGenerationJobForUser(latestJobId, auth.firestoreUser.id)
-    : null;
-  const artworks = await listFirestoreArtworksForProject(
-    auth.firestoreUser.id,
-    project.id
-  );
-  const exportJobs = await listFirestoreExportJobsForUser(
-    auth.firestoreUser.id,
-    { projectId: project.id, limit: 5 }
-  );
-  const data: ProjectDetail = {
-    plan: await getUserPlanStatus(auth.firestoreUser),
-    project,
-    generationJobs,
-    latestGenerationJob,
-    exportJobs,
-    latestExportJob: exportJobs[0] ?? null,
-    artworks
-  };
-
-  return NextResponse.json(ok(data));
 }
 
 export async function DELETE(

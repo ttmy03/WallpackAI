@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const defaultPort = "3100";
 const baseURL =
-  process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${defaultPort}`;
+  process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${defaultPort}`;
 const webServerPort = new URL(baseURL).port || defaultPort;
 
 export default defineConfig({

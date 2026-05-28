@@ -30,7 +30,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { ApiResponse } from "@/lib/api-response";
+import { readApiResponse } from "@/lib/app/api-client";
 import type { DashboardSummary } from "@/lib/app/api-types";
 import {
   GENERATION_PREVIEW_CREDIT_COST,
@@ -203,7 +203,7 @@ export function ProjectWizard() {
         Authorization: `Bearer ${token}`
       }
     });
-    const payload = (await response.json()) as ApiResponse<GenerationJobView>;
+    const payload = await readApiResponse<GenerationJobView>(response);
 
     if (!payload.ok) {
       throw new Error(payload.error.message);
@@ -279,8 +279,7 @@ export function ProjectWizard() {
         },
         body: JSON.stringify(generationBody)
       });
-      const payload =
-        (await response.json()) as ApiResponse<QueueGenerationResponse>;
+      const payload = await readApiResponse<QueueGenerationResponse>(response);
 
       if (!payload.ok) {
         throw new Error(payload.error.message);

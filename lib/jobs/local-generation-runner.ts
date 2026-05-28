@@ -44,7 +44,10 @@ import {
 } from "@/lib/print/presets";
 import { buildWallArtPrompt } from "@/lib/prompts/builder";
 import { promptInputSchema, type PromptInput } from "@/lib/prompts/schema";
-import { getStorageProvider } from "@/lib/storage";
+import {
+  createOptionalSignedDownloadUrl,
+  getStorageProvider
+} from "@/lib/storage";
 
 type LocalGenerationJob = {
   id: string;
@@ -669,14 +672,21 @@ async function toArtworkPreview(
     });
 
   if (process.env.NODE_ENV !== "test") {
-    const signedUrl = await getStorageProvider().createSignedDownloadUrl(
+    const signedUrl = await createOptionalSignedDownloadUrl(
       primarySourceStoragePath
     );
 
     return {
       artworkId,
-      previewUrl: signedUrl.url,
-      previewUrlExpiresAt: signedUrl.expiresAt.toISOString(),
+      dataUrl:
+        signedUrl === null
+          ? (primaryDimensionPreview?.dataUrl ??
+            `data:${primaryRatioSource.image.mimeType};base64,${Buffer.from(
+              primaryRatioSource.image.bytes
+            ).toString("base64")}`)
+          : undefined,
+      previewUrl: signedUrl?.url,
+      previewUrlExpiresAt: signedUrl?.expiresAt.toISOString(),
       width: primaryRatioSource.image.width,
       height: primaryRatioSource.image.height,
       mimeType: primaryRatioSource.image.mimeType,
@@ -784,13 +794,22 @@ async function createArtworkDimensionPreview(
         ratioKey: input.ratioKey
       }
     });
-    const signedUrl =
-      await getStorageProvider().createSignedDownloadUrl(previewStoragePath);
+    const signedUrl = await createOptionalSignedDownloadUrl(previewStoragePath);
 
     return {
       ratioKey: input.ratioKey,
-      previewUrl: signedUrl.url,
-      previewUrlExpiresAt: signedUrl.expiresAt.toISOString(),
+      dataUrl:
+        signedUrl === null
+          ? `data:image/jpeg;base64,${previewBytes.toString("base64")}`
+          : undefined,
+      sourceDataUrl:
+        signedUrl === null
+          ? `data:${image.mimeType};base64,${Buffer.from(image.bytes).toString(
+              "base64"
+            )}`
+          : undefined,
+      previewUrl: signedUrl?.url,
+      previewUrlExpiresAt: signedUrl?.expiresAt.toISOString(),
       sourceStoragePath,
       sourceWidth: image.width,
       sourceHeight: image.height,
