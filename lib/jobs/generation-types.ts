@@ -51,6 +51,7 @@ export type GenerationJobView = {
   creditCost: number;
   creditReserved: boolean;
   creditCommitted: boolean;
+  creditRefunded: boolean;
   prompt: string;
   negativePrompt: string;
   primaryRatio: string;
@@ -60,6 +61,10 @@ export type GenerationJobView = {
   errorMessage: string | null;
   artworks: GeneratedArtworkPreview[];
   createdAt: string;
+  updatedAt: string;
   startedAt: string | null;
   completedAt: string | null;
+  leaseOwner: string | null;
+  leaseExpiresAt: string | null;
+  attemptCount: number;
 };

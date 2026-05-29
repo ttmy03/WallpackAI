@@ -16,6 +16,7 @@
     "firebase:apphosting:rollout": "firebase apphosting:rollouts:create wallpackai-web --project wallpackai --git-branch main --force"
   },
   "dependencies": {
+    "@google-cloud/tasks": "^6.2.2",
     "@radix-ui/react-slot": "latest",
     "class-variance-authority": "latest",
     "clsx": "latest",

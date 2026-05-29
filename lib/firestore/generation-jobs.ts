@@ -22,6 +22,11 @@ type FirestoreGenerationJobDocument = Omit<GenerationJobView, "artworks"> & {
   artworkIds: string[];
 };
 
+export type FirestoreGenerationJobRecord = {
+  userId: string;
+  job: GenerationJobView;
+};
+
 type FirestoreArtworkDocument = {
   artworkId: string;
   width: number;
@@ -92,6 +97,18 @@ export async function getFirestoreGenerationJobForUser(
   jobId: string,
   userId: string
 ) {
+  const record = await getFirestoreGenerationJobRecord(jobId);
+
+  if (!record || record.userId !== userId) {
+    return null;
+  }
+
+  return record.job;
+}
+
+export async function getFirestoreGenerationJobRecord(
+  jobId: string
+): Promise<FirestoreGenerationJobRecord | null> {
   if (process.env.NODE_ENV === "test") {
     return null;
   }
@@ -104,8 +121,9 @@ export async function getFirestoreGenerationJobForUser(
   }
 
   const data = snapshot.data() ?? {};
+  const userId = stringOrFallback(data.userId, "");
 
-  if (data.userId !== userId) {
+  if (!userId) {
     return null;
   }
 
@@ -122,9 +140,65 @@ export async function getFirestoreGenerationJobForUser(
   );
 
   return {
-    ...job,
-    artworks: artworks.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    userId,
+    job: {
+      ...job,
+      artworks: artworks.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    }
   };
+}
+
+export async function claimFirestoreGenerationJob(
+  jobId: string,
+  options: { leaseOwner: string; leaseMs: number; now?: Date }
+): Promise<FirestoreGenerationJobRecord | null> {
+  if (process.env.NODE_ENV === "test") {
+    return null;
+  }
+
+  const db = getFirebaseFirestore();
+  const jobRef = db.doc(generationJobDocumentPath(jobId));
+  let claimed: FirestoreGenerationJobRecord | null = null;
+
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(jobRef);
+
+    if (!snapshot.exists) {
+      return;
+    }
+
+    const data = snapshot.data() ?? {};
+    const userId = stringOrFallback(data.userId, "");
+    const job = firestoreGenerationJobFromDocument(snapshot.id, data);
+
+    if (!userId || job.status !== "queued") {
+      return;
+    }
+
+    const now = options.now ?? new Date();
+    const updatedAt = now.toISOString();
+    const update = {
+      status: "validating" as const,
+      stage: "credit_reservation",
+      startedAt: job.startedAt ?? updatedAt,
+      updatedAt,
+      leaseOwner: options.leaseOwner,
+      leaseExpiresAt: new Date(now.getTime() + options.leaseMs).toISOString(),
+      attemptCount: job.attemptCount + 1
+    };
+
+    transaction.set(jobRef, update, { merge: true });
+    claimed = {
+      userId,
+      job: {
+        ...job,
+        ...update,
+        artworks: []
+      }
+    };
+  });
+
+  return claimed;
 }
 
 export async function listFirestoreGenerationJobsForUser(
@@ -182,6 +256,7 @@ export function firestoreGenerationJobFromDocument(
     creditCost: numberOrFallback(data.creditCost, 0),
     creditReserved: data.creditReserved === true,
     creditCommitted: data.creditCommitted === true,
+    creditRefunded: data.creditRefunded === true,
     prompt: stringOrFallback(data.prompt, ""),
     negativePrompt: stringOrFallback(data.negativePrompt, ""),
     primaryRatio: stringOrFallback(data.primaryRatio, "2x3"),
@@ -194,8 +269,21 @@ export function firestoreGenerationJobFromDocument(
     errorMessage: nullableString(data.errorMessage),
     artworks: [],
     createdAt: stringOrFallback(data.createdAt, new Date(0).toISOString()),
+    updatedAt: stringOrFallback(
+      data.updatedAt,
+      stringOrFallback(
+        data.completedAt,
+        stringOrFallback(
+          data.startedAt,
+          stringOrFallback(data.createdAt, new Date(0).toISOString())
+        )
+      )
+    ),
     startedAt: nullableString(data.startedAt),
-    completedAt: nullableString(data.completedAt)
+    completedAt: nullableString(data.completedAt),
+    leaseOwner: nullableString(data.leaseOwner),
+    leaseExpiresAt: nullableString(data.leaseExpiresAt),
+    attemptCount: numberOrFallback(data.attemptCount, 0)
   };
 }
 

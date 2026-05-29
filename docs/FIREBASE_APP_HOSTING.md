@@ -67,6 +67,7 @@ STRIPE_WEBHOOK_SECRET
 STRIPE_PRICE_STARTER_ID
 STRIPE_PRICE_STUDIO_ID
 STRIPE_PRICE_BATCH_ID
+JOB_WORKER_SECRET
 ```
 
 The Stripe price secret names must match the plan keys used by the app:
@@ -117,6 +118,32 @@ with `userId = firebaseUid`.
 Generated image bytes are not stored in Firestore. Source images are uploaded to
 Firebase Storage under user-scoped paths, and Firestore stores storage paths,
 dimensions, job status, errors, and retry metadata.
+
+## Production Job Queue
+
+Production jobs use Cloud Tasks:
+
+```txt
+JOB_RUNNER=cloud-tasks
+CLOUD_TASKS_PROJECT_ID=wallpackai
+CLOUD_TASKS_LOCATION=europe-west4
+CLOUD_TASKS_QUEUE=wallpack-jobs
+JOB_WORKER_BASE_URL=https://wallpackai-web--wallpackai.europe-west4.hosted.app
+JOB_WORKER_SECRET=<Secret Manager secret>
+```
+
+Create the queue in `europe-west4`:
+
+```bash
+gcloud tasks queues create wallpack-jobs \
+  --project wallpackai \
+  --location europe-west4
+```
+
+Grant the App Hosting runtime service account `roles/cloudtasks.enqueuer`.
+Cloud Tasks dispatches one persisted Firestore job to an internal worker route,
+which validates `X-WallPack-Job-Secret`, claims the queued job with a Firestore
+lease, and then updates Firestore status through completion or failure.
 
 Firestore client writes are denied by rules. The Next.js server writes through
 Firebase Admin after token verification. Authenticated users may read their own

@@ -14,3 +14,10 @@
 - Keep `negativePrompt` out of `prunaai:p-image@upscale` requests because the model rejects that parameter; prompt exclusions stay in the generation prompt path.
 - Kept provider-specific HTTP request construction under `/lib/ai/providers/runware.ts`.
 - Preserved `MockImageProvider` for local tests and cheap UI development.
+
+## 2026-05-29 Production job queue
+
+- Moved Generate and Create Etsy Pack work behind a `JobRunner` boundary so public API routes enqueue jobs instead of performing long-running work.
+- Chose Cloud Tasks for production dispatch because it integrates with Google ADC/IAM and Firebase App Hosting without custom signing code.
+- Kept Firestore as the source of truth for job status, leases, attempts, and idempotent credit reserve/commit/refund state.
+- Preserved a local job adapter for development and tests, with `LOCAL_JOB_AUTOPROCESS=false` available when a test needs to assert enqueue-only behavior.

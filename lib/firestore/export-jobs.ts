@@ -15,6 +15,11 @@ type FirestoreExportJobDocument = ExportJobView & {
   userId: string;
 };
 
+export type FirestoreExportJobRecord = {
+  userId: string;
+  job: ExportJobView;
+};
+
 export async function saveFirestoreExportJob(
   job: ExportJobView,
   options: { userId: string }
@@ -38,6 +43,18 @@ export async function getFirestoreExportJobForUser(
   jobId: string,
   userId: string
 ) {
+  const record = await getFirestoreExportJobRecord(jobId);
+
+  if (!record || record.userId !== userId) {
+    return null;
+  }
+
+  return signExportArtifacts(record.job);
+}
+
+export async function getFirestoreExportJobRecord(
+  jobId: string
+): Promise<FirestoreExportJobRecord | null> {
   if (process.env.NODE_ENV === "test") {
     return null;
   }
@@ -51,12 +68,68 @@ export async function getFirestoreExportJobForUser(
   }
 
   const data = snapshot.data() ?? {};
+  const userId = stringOrFallback(data.userId, "");
 
-  if (data.userId !== userId) {
+  if (!userId) {
     return null;
   }
 
-  return signExportArtifacts(firestoreExportJobFromDocument(snapshot.id, data));
+  return {
+    userId,
+    job: firestoreExportJobFromDocument(snapshot.id, data)
+  };
+}
+
+export async function claimFirestoreExportJob(
+  jobId: string,
+  options: { leaseOwner: string; leaseMs: number; now?: Date }
+): Promise<FirestoreExportJobRecord | null> {
+  if (process.env.NODE_ENV === "test") {
+    return null;
+  }
+
+  const db = getFirebaseFirestore();
+  const jobRef = db.doc(exportJobDocumentPath(jobId));
+  let claimed: FirestoreExportJobRecord | null = null;
+
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(jobRef);
+
+    if (!snapshot.exists) {
+      return;
+    }
+
+    const data = snapshot.data() ?? {};
+    const userId = stringOrFallback(data.userId, "");
+    const job = firestoreExportJobFromDocument(snapshot.id, data);
+
+    if (!userId || job.status !== "queued") {
+      return;
+    }
+
+    const now = options.now ?? new Date();
+    const updatedAt = now.toISOString();
+    const update = {
+      status: "validating" as const,
+      stage: "credit_reservation",
+      startedAt: job.startedAt ?? updatedAt,
+      updatedAt,
+      leaseOwner: options.leaseOwner,
+      leaseExpiresAt: new Date(now.getTime() + options.leaseMs).toISOString(),
+      attemptCount: job.attemptCount + 1
+    };
+
+    transaction.set(jobRef, update, { merge: true });
+    claimed = {
+      userId,
+      job: {
+        ...job,
+        ...update
+      }
+    };
+  });
+
+  return claimed;
 }
 
 export async function listFirestoreExportJobsForUser(
@@ -126,7 +199,10 @@ export function firestoreExportJobFromDocument(
     createdAt,
     updatedAt,
     startedAt: nullableString(data.startedAt),
-    completedAt: nullableString(data.completedAt)
+    completedAt: nullableString(data.completedAt),
+    leaseOwner: nullableString(data.leaseOwner),
+    leaseExpiresAt: nullableString(data.leaseExpiresAt),
+    attemptCount: numberOrFallback(data.attemptCount, 0)
   };
 }
 

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { fail, ok } from "@/lib/api-response";
 import type { ExportJobResponse } from "@/lib/app/api-types";
 import { requireAppUser } from "@/lib/auth/api-auth";
-import { retryLocalExportJob } from "@/lib/jobs/local-export-runner";
+import { retryExportJob } from "@/lib/jobs/job-actions";
 
 export async function POST(
   request: Request,
@@ -16,7 +16,7 @@ export async function POST(
   }
 
   const { jobId } = await params;
-  const result = await retryLocalExportJob(jobId, auth.firestoreUser.id);
+  const result = await retryExportJob(jobId, auth.firestoreUser.id);
 
   if (!result.ok) {
     return NextResponse.json(fail(result.code, result.message), {

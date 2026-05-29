@@ -53,4 +53,7 @@ export type ExportJobView = {
   updatedAt: string;
   startedAt: string | null;
   completedAt: string | null;
+  leaseOwner: string | null;
+  leaseExpiresAt: string | null;
+  attemptCount: number;
 };

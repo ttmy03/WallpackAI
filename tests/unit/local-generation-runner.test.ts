@@ -4,6 +4,8 @@ import {
   cancelLocalGenerationJob,
   enqueueLocalGenerationJob,
   getLocalCreditBalance,
+  getLocalGenerationJobForUser,
+  processGenerationJob,
   retryLocalGenerationJob,
   waitForLocalGenerationJob
 } from "@/lib/jobs/local-generation-runner";
@@ -34,6 +36,15 @@ describe("local generation runner", () => {
     });
 
     expect(queued.status).toBe("queued");
+    await expect(
+      getLocalGenerationJobForUser(queued.jobId, userId)
+    ).resolves.toMatchObject({
+      status: "queued",
+      artworks: []
+    });
+    expect(getLocalCreditBalance(userId)).toBe(beforeBalance);
+
+    await processGenerationJob(queued.jobId);
 
     const job = await waitForLocalGenerationJob(queued.jobId, {
       timeoutMs: 20_000
@@ -116,6 +127,8 @@ describe("local generation runner", () => {
       },
       previewCount: 1
     });
+
+    await processGenerationJob(queued.jobId);
 
     const job = await waitForLocalGenerationJob(queued.jobId, {
       timeoutMs: 20_000

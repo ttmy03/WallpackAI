@@ -13,9 +13,9 @@ import {
   getFirestoreProjectForUser
 } from "@/lib/firestore/projects";
 import {
-  enqueueLocalGenerationJob,
   getCreditBalance
 } from "@/lib/jobs/local-generation-runner";
+import { getJobRunner } from "@/lib/jobs/job-runner";
 import { promptInputSchema } from "@/lib/prompts/schema";
 
 const generationRequestSchema = z.object({
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = await enqueueLocalGenerationJob({
+  const result = await getJobRunner().enqueueGeneration({
     userId: firestoreUser.id,
     projectId: project.id,
     projectName: project.name,

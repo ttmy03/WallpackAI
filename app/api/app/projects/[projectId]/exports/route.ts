@@ -5,7 +5,7 @@ import { fail, ok } from "@/lib/api-response";
 import type { ExportJobResponse } from "@/lib/app/api-types";
 import { requireAppUser } from "@/lib/auth/api-auth";
 import { getUserPlanStatus } from "@/lib/billing/plan-usage";
-import { enqueueLocalExportJob } from "@/lib/jobs/local-export-runner";
+import { getJobRunner } from "@/lib/jobs/job-runner";
 import {
   PRINT_RATIO_PRESET_KEYS,
   type PrintRatioPresetKey
@@ -58,7 +58,7 @@ export async function POST(
   }
 
   const { projectId } = await params;
-  const result = await enqueueLocalExportJob({
+  const result = await getJobRunner().enqueueExport({
     userId: auth.firestoreUser.id,
     projectId,
     artworkId: parsed.data.artworkId,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { isStaleExportJobView } from "@/lib/jobs/local-export-runner";
+import { isStaleGenerationJobView } from "@/lib/jobs/local-generation-runner";
 
 describe("export job timeout detection", () => {
   it("marks non-terminal jobs stale after the timeout window", () => {
@@ -35,5 +36,22 @@ describe("export job timeout detection", () => {
         }
       )
     ).toBe(false);
+  });
+
+  it("detects stale generation jobs with the same heartbeat model", () => {
+    expect(
+      isStaleGenerationJobView(
+        {
+          status: "running",
+          createdAt: "2026-05-24T10:00:00.000Z",
+          startedAt: "2026-05-24T10:01:00.000Z",
+          updatedAt: "2026-05-24T10:05:00.000Z"
+        },
+        {
+          now: new Date("2026-05-24T10:31:00.000Z"),
+          timeoutMs: 25 * 60 * 1000
+        }
+      )
+    ).toBe(true);
   });
 });

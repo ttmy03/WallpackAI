@@ -110,6 +110,53 @@ env:
       - BUILD
       - RUNTIME
 
+  - variable: JOB_RUNNER
+    value: cloud-tasks
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: CREDIT_LEDGER_PROVIDER
+    value: firestore
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: CLOUD_TASKS_PROJECT_ID
+    value: wallpackai
+    availability:
+      - RUNTIME
+
+  - variable: CLOUD_TASKS_LOCATION
+    value: europe-west4
+    availability:
+      - RUNTIME
+
+  - variable: CLOUD_TASKS_QUEUE
+    value: wallpack-jobs
+    availability:
+      - RUNTIME
+
+  - variable: JOB_WORKER_BASE_URL
+    value: https://wallpackai-web--wallpackai.europe-west4.hosted.app
+    availability:
+      - RUNTIME
+
+  - variable: JOB_WORKER_SECRET
+    secret: JOB_WORKER_SECRET
+    availability:
+      - RUNTIME
+
+  - variable: GENERATION_JOB_TIMEOUT_MS
+    value: "1500000"
+    availability:
+      - RUNTIME
+
+  - variable: EXPORT_JOB_TIMEOUT_MS
+    value: "900000"
+    availability:
+      - RUNTIME
+
   - variable: STORAGE_PROVIDER
     value: firebase
     availability:

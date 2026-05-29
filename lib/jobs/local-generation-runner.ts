@@ -17,6 +17,7 @@ import {
   reserveFirestoreCredits
 } from "@/lib/billing/firestore-credit-ledger";
 import {
+  claimFirestoreGenerationJob,
   getFirestoreGenerationJobForUser,
   saveFirestoreGenerationJob
 } from "@/lib/firestore/generation-jobs";
@@ -60,6 +61,7 @@ type LocalGenerationJob = {
   creditCost: number;
   creditReserved: boolean;
   creditCommitted: boolean;
+  creditRefunded: boolean;
   prompt: string;
   negativePrompt: string;
   primaryRatio: string;
@@ -71,8 +73,12 @@ type LocalGenerationJob = {
   errorMessage: string | null;
   artworks: GeneratedArtworkPreview[];
   createdAt: Date;
+  updatedAt: Date;
   startedAt: Date | null;
   completedAt: Date | null;
+  leaseOwner: string | null;
+  leaseExpiresAt: Date | null;
+  attemptCount: number;
 };
 
 type LocalGenerationState = {
@@ -100,6 +106,7 @@ type EnqueueLocalGenerationInput = {
 };
 
 const DEFAULT_DEV_CREDITS = 50;
+const DEFAULT_GENERATION_JOB_TIMEOUT_MS = 25 * 60 * 1000;
 const DIMENSION_PREVIEW_LONG_EDGE_PX = 1400;
 const DIMENSION_PREVIEW_BACKGROUND = "#ffffff";
 const DIMENSION_PREVIEW_BLUR_SIGMA = 20;
@@ -143,6 +150,7 @@ export async function enqueueLocalGenerationJob(
       input.creditCost ?? generationCreditCostForPreviewCount(previewCount),
     creditReserved: false,
     creditCommitted: false,
+    creditRefunded: false,
     prompt: builtPrompt.prompt,
     negativePrompt: builtPrompt.negativePrompt,
     primaryRatio: parsedPromptInputs.primaryRatio,
@@ -157,17 +165,19 @@ export async function enqueueLocalGenerationJob(
     errorMessage: null,
     artworks: [],
     createdAt: new Date(),
+    updatedAt: new Date(),
     startedAt: null,
-    completedAt: null
+    completedAt: null,
+    leaseOwner: null,
+    leaseExpiresAt: null,
+    attemptCount: 0
   };
 
-  state.jobs.set(job.id, job);
+  if (!shouldPreferFirestoreJobClaim()) {
+    state.jobs.set(job.id, job);
+  }
   await persistGenerationJob(job);
   await persistProjectGenerating(job);
-
-  setTimeout(() => {
-    void processLocalGenerationJob(job.id);
-  }, 0);
 
   return {
     jobId: job.id,
@@ -180,17 +190,24 @@ export async function getLocalGenerationJobForUser(
   jobId: string,
   userId: string
 ) {
-  const job = state.jobs.get(jobId);
+  const job = shouldPreferFirestoreJobClaim() ? undefined : state.jobs.get(jobId);
 
   if (job?.userId === userId) {
+    await failTimedOutLocalGenerationJob(job, { now: new Date() });
     return toGenerationJobView(job);
   }
 
-  return getFirestoreGenerationJobForUser(jobId, userId);
+  const persistedJob = await getFirestoreGenerationJobForUser(jobId, userId);
+
+  if (!persistedJob) {
+    return null;
+  }
+
+  return expireStalePersistedGenerationJob(persistedJob, userId);
 }
 
 export async function cancelLocalGenerationJob(jobId: string, userId: string) {
-  const job = state.jobs.get(jobId);
+  const job = shouldPreferFirestoreJobClaim() ? undefined : state.jobs.get(jobId);
 
   if (!job) {
     const persistedJob = await getFirestoreGenerationJobForUser(jobId, userId);
@@ -204,7 +221,42 @@ export async function cancelLocalGenerationJob(jobId: string, userId: string) {
       };
     }
 
-    return cannotCancelResult(persistedJob.status);
+    if (persistedJob.status !== "queued" && persistedJob.status !== "validating") {
+      return cannotCancelResult(persistedJob.status);
+    }
+
+    let cancelledJob: GenerationJobView = {
+      ...persistedJob,
+      status: "cancelled",
+      stage: "cancelled",
+      retryable: true,
+      completedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (
+      cancelledJob.creditReserved &&
+      !cancelledJob.creditCommitted &&
+      !cancelledJob.creditRefunded
+    ) {
+      await refundLocalCredits({
+        userId,
+        amount: cancelledJob.creditCost,
+        reason: "Preview generation cancelled",
+        idempotencyKey: `${cancelledJob.jobId}:cancel-refund`,
+        relatedJobId: cancelledJob.jobId
+      });
+      cancelledJob = { ...cancelledJob, creditRefunded: true };
+    }
+
+    await saveFirestoreGenerationJob(cancelledJob, { userId });
+    await markFirestoreProjectStatus({
+      projectId: cancelledJob.projectId,
+      userId,
+      status: "draft"
+    });
+
+    return { ok: true as const, job: cancelledJob };
   }
 
   if (job.userId !== userId) {
@@ -221,13 +273,14 @@ export async function cancelLocalGenerationJob(jobId: string, userId: string) {
   }
 
   if (job.creditReserved && !job.creditCommitted) {
-    state.ledger.refund({
+    await refundLocalCredits({
       userId: job.userId,
       amount: job.creditCost,
       reason: "Preview generation cancelled",
       idempotencyKey: `${job.id}:cancel-refund`,
       relatedJobId: job.id
     });
+    job.creditRefunded = true;
   }
 
   job.status = "cancelled";
@@ -376,6 +429,10 @@ export function getLocalArtworkForUser(input: {
   projectId: string;
   artworkId: string;
 }): GeneratedArtworkPreview | null {
+  if (shouldPreferFirestoreJobClaim()) {
+    return null;
+  }
+
   for (const job of state.jobs.values()) {
     if (job.userId !== input.userId || job.projectId !== input.projectId) {
       continue;
@@ -393,21 +450,63 @@ export function getLocalArtworkForUser(input: {
   return null;
 }
 
-async function processLocalGenerationJob(jobId: string) {
-  const job = state.jobs.get(jobId);
+async function claimGenerationJob(
+  jobId: string,
+  options: { leaseOwner: string }
+): Promise<LocalGenerationJob | null> {
+  const localJob = shouldPreferFirestoreJobClaim()
+    ? undefined
+    : state.jobs.get(jobId);
+  const now = new Date();
 
-  if (!job || job.status !== "queued") {
-    return;
+  if (localJob) {
+    if (localJob.status !== "queued") {
+      return null;
+    }
+
+    localJob.status = "validating";
+    localJob.stage = "credit_reservation";
+    localJob.startedAt = localJob.startedAt ?? now;
+    localJob.leaseOwner = options.leaseOwner;
+    localJob.leaseExpiresAt = new Date(now.getTime() + getGenerationJobTimeoutMs());
+    localJob.attemptCount += 1;
+    await persistGenerationJob(localJob);
+
+    return localJob;
   }
 
-  job.status = "validating";
-  job.stage = "credit_reservation";
-  job.startedAt = new Date();
-  await persistGenerationJob(job);
+  const record = await claimFirestoreGenerationJob(jobId, {
+    leaseOwner: options.leaseOwner,
+    leaseMs: getGenerationJobTimeoutMs(),
+    now
+  });
+
+  if (!record) {
+    return null;
+  }
+
+  return localGenerationJobFromView(record.job, record.userId);
+}
+
+function shouldPreferFirestoreJobClaim() {
+  return process.env.NODE_ENV !== "test" && process.env.JOB_RUNNER === "cloud-tasks";
+}
+
+export async function processGenerationJob(
+  jobId: string,
+  options: { leaseOwner?: string } = {}
+) {
+  const job = await claimGenerationJob(jobId, {
+    leaseOwner: options.leaseOwner ?? `worker_${randomUUID()}`
+  });
+
+  if (!job) {
+    return { processed: false as const, job: null };
+  }
 
   try {
     if (isGenerationJobCancelled(job)) {
-      return;
+      return { processed: false as const, job: toGenerationJobView(job) };
     }
 
     await reserveLocalCredits({
@@ -421,7 +520,7 @@ async function processLocalGenerationJob(jobId: string) {
     await persistGenerationJob(job);
 
     if (isGenerationJobCancelled(job)) {
-      return;
+      return { processed: false as const, job: toGenerationJobView(job) };
     }
 
     job.status = "running";
@@ -466,6 +565,7 @@ async function processLocalGenerationJob(jobId: string) {
     job.completedAt = new Date();
     await persistGenerationJob(job);
     await persistProjectGenerated(job, "ready");
+    return { processed: true as const, job: toGenerationJobView(job) };
   } catch (error) {
     if (job.creditReserved && !job.creditCommitted) {
       await refundLocalCredits({
@@ -475,6 +575,7 @@ async function processLocalGenerationJob(jobId: string) {
         idempotencyKey: `${job.id}:refund`,
         relatedJobId: job.id
       });
+      job.creditRefunded = true;
     }
 
     job.status = "failed";
@@ -491,7 +592,12 @@ async function processLocalGenerationJob(jobId: string) {
     job.completedAt = new Date();
     await persistGenerationJob(job).catch(() => undefined);
     await persistProjectGenerated(job, "failed").catch(() => undefined);
+    return { processed: true as const, job: toGenerationJobView(job) };
   }
+}
+
+export async function processLocalGenerationJob(jobId: string) {
+  return processGenerationJob(jobId);
 }
 
 async function generateArtworkRatioSources(input: {
@@ -924,6 +1030,7 @@ function toGenerationJobView(job: LocalGenerationJob): GenerationJobView {
     creditCost: job.creditCost,
     creditReserved: job.creditReserved,
     creditCommitted: job.creditCommitted,
+    creditRefunded: job.creditRefunded,
     prompt: job.prompt,
     negativePrompt: job.negativePrompt,
     primaryRatio: job.primaryRatio,
@@ -933,8 +1040,54 @@ function toGenerationJobView(job: LocalGenerationJob): GenerationJobView {
     errorMessage: job.errorMessage,
     artworks: job.artworks,
     createdAt: job.createdAt.toISOString(),
+    updatedAt: job.updatedAt.toISOString(),
     startedAt: job.startedAt?.toISOString() ?? null,
-    completedAt: job.completedAt?.toISOString() ?? null
+    completedAt: job.completedAt?.toISOString() ?? null,
+    leaseOwner: job.leaseOwner,
+    leaseExpiresAt: job.leaseExpiresAt?.toISOString() ?? null,
+    attemptCount: job.attemptCount
+  };
+}
+
+function localGenerationJobFromView(
+  job: GenerationJobView,
+  userId: string
+): LocalGenerationJob {
+  const provider =
+    process.env.IMAGE_PROVIDER === "runware" ? "runware" : "mock";
+
+  return {
+    id: job.jobId,
+    userId,
+    projectId: job.projectId,
+    projectName: job.projectName,
+    status: job.status,
+    stage: job.stage,
+    requestedCount: job.requestedCount,
+    creditCost: job.creditCost,
+    creditReserved: job.creditReserved,
+    creditCommitted: job.creditCommitted,
+    creditRefunded: job.creditRefunded,
+    prompt: job.prompt,
+    negativePrompt: job.negativePrompt,
+    primaryRatio: job.primaryRatio,
+    quality: job.quality,
+    provider,
+    model:
+      provider === "runware"
+        ? (process.env.RUNWARE_AIR_ID ?? RUNWARE_GPT_IMAGE_AIR_ID)
+        : "mock-wall-art-preview",
+    retryable: job.retryable,
+    errorCode: job.errorCode,
+    errorMessage: job.errorMessage,
+    artworks: job.artworks,
+    createdAt: dateFromIso(job.createdAt),
+    updatedAt: dateFromIso(job.updatedAt),
+    startedAt: nullableDateFromIso(job.startedAt),
+    completedAt: nullableDateFromIso(job.completedAt),
+    leaseOwner: job.leaseOwner,
+    leaseExpiresAt: nullableDateFromIso(job.leaseExpiresAt),
+    attemptCount: job.attemptCount
   };
 }
 
@@ -946,12 +1099,46 @@ function clampPreviewCount(value: number) {
   return Math.max(1, Math.min(4, Math.trunc(value)));
 }
 
+export function isStaleGenerationJobView(
+  job: Pick<
+    GenerationJobView,
+    "createdAt" | "startedAt" | "status" | "updatedAt"
+  >,
+  options: { now?: Date; timeoutMs?: number } = {}
+) {
+  if (TERMINAL_STATUSES.has(job.status)) {
+    return false;
+  }
+
+  const lastActivityAt =
+    timestampFromIso(job.updatedAt) ??
+    timestampFromIso(job.startedAt) ??
+    timestampFromIso(job.createdAt);
+
+  if (lastActivityAt === null) {
+    return false;
+  }
+
+  const now = options.now ?? new Date();
+  const timeoutMs = options.timeoutMs ?? getGenerationJobTimeoutMs();
+
+  return now.getTime() - lastActivityAt >= timeoutMs;
+}
+
 function readPositiveIntegerEnv(name: string, fallback: number) {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+function getGenerationJobTimeoutMs() {
+  return readPositiveIntegerEnv(
+    "GENERATION_JOB_TIMEOUT_MS",
+    DEFAULT_GENERATION_JOB_TIMEOUT_MS
+  );
+}
+
 async function persistGenerationJob(job: LocalGenerationJob) {
+  job.updatedAt = new Date();
   await saveFirestoreGenerationJob(toGenerationJobView(job), {
     userId: job.userId
   });
@@ -989,6 +1176,120 @@ async function persistProjectStatus(
     userId: job.userId,
     status
   });
+}
+
+async function expireStalePersistedGenerationJob(
+  job: GenerationJobView,
+  userId: string
+) {
+  if (!isStaleGenerationJobView(job)) {
+    return job;
+  }
+
+  let timedOutJob = timedOutGenerationJobView(job, new Date());
+
+  if (
+    timedOutJob.creditReserved &&
+    !timedOutJob.creditCommitted &&
+    !timedOutJob.creditRefunded
+  ) {
+    await refundLocalCredits({
+      userId,
+      amount: timedOutJob.creditCost,
+      reason: "Preview generation timed out",
+      idempotencyKey: `${timedOutJob.jobId}:refund`,
+      relatedJobId: timedOutJob.jobId
+    });
+    timedOutJob = {
+      ...timedOutJob,
+      creditRefunded: true
+    };
+  }
+
+  await saveFirestoreGenerationJob(timedOutJob, { userId });
+  await markFirestoreProjectStatus({
+    projectId: timedOutJob.projectId,
+    userId,
+    status: "failed"
+  });
+
+  return timedOutJob;
+}
+
+async function failTimedOutLocalGenerationJob(
+  job: LocalGenerationJob,
+  options: { now: Date }
+) {
+  if (!isStaleGenerationJobView(toGenerationJobView(job), options)) {
+    return false;
+  }
+
+  job.status = "failed";
+  job.stage = "timed_out";
+  job.errorCode = "GENERATION_TIMEOUT";
+  job.errorMessage =
+    "Generation job timed out before it finished. Any reserved credits were refunded. Please retry the generation.";
+  job.retryable = true;
+  job.completedAt = options.now;
+
+  if (job.creditReserved && !job.creditCommitted && !job.creditRefunded) {
+    await refundLocalCredits({
+      userId: job.userId,
+      amount: job.creditCost,
+      reason: "Preview generation timed out",
+      idempotencyKey: `${job.id}:refund`,
+      relatedJobId: job.id
+    });
+    job.creditRefunded = true;
+  }
+
+  await persistGenerationJob(job);
+  await persistProjectGenerated(job, "failed").catch(() => undefined);
+
+  return true;
+}
+
+function timedOutGenerationJobView(
+  job: GenerationJobView,
+  now: Date
+): GenerationJobView {
+  const timestamp = now.toISOString();
+
+  return {
+    ...job,
+    status: "failed",
+    stage: "timed_out",
+    retryable: true,
+    errorCode: "GENERATION_TIMEOUT",
+    errorMessage:
+      "Generation job timed out before it finished. Any reserved credits were refunded. Please retry the generation.",
+    updatedAt: timestamp,
+    completedAt: timestamp
+  };
+}
+
+function timestampFromIso(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = new Date(value).getTime();
+
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function dateFromIso(value: string) {
+  return nullableDateFromIso(value) ?? new Date(0);
+}
+
+function nullableDateFromIso(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = new Date(value);
+
+  return Number.isNaN(timestamp.getTime()) ? null : timestamp;
 }
 
 function cannotCancelResult(status: JobStatus) {

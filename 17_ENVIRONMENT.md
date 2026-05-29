@@ -47,9 +47,14 @@ STRIPE_PRICE_BATCH_ID=
 # Jobs
 JOB_RUNNER=local
 CREDIT_LEDGER_PROVIDER=firestore
-TRIGGER_SECRET_KEY=
-INNGEST_EVENT_KEY=
-INNGEST_SIGNING_KEY=
+CLOUD_TASKS_PROJECT_ID=wallpackai
+CLOUD_TASKS_LOCATION=europe-west4
+CLOUD_TASKS_QUEUE=wallpack-jobs
+JOB_WORKER_BASE_URL=http://localhost:3100
+JOB_WORKER_SECRET=
+GENERATION_JOB_TIMEOUT_MS=1500000
+EXPORT_JOB_TIMEOUT_MS=900000
+LOCAL_JOB_AUTOPROCESS=true
 
 # Storage
 STORAGE_PROVIDER=firebase
@@ -105,7 +110,36 @@ IMAGE_PROVIDER=mock
 JOB_RUNNER=local
 ```
 
-Mock provider should generate a deterministic gradient or fixture image so exports can be tested cheaply.
+Mock provider should generate a deterministic gradient or fixture image so exports can be tested cheaply. Local jobs are enqueued and then dispatched by the local job adapter. Set `LOCAL_JOB_AUTOPROCESS=false` when testing that enqueue does not execute work immediately.
+
+### Cloud Tasks production jobs
+
+Use in production so Generate and Create Etsy Pack jobs survive browser closes
+and do not depend on the public API request lifecycle:
+
+```bash
+JOB_RUNNER=cloud-tasks
+CLOUD_TASKS_PROJECT_ID=wallpackai
+CLOUD_TASKS_LOCATION=europe-west4
+CLOUD_TASKS_QUEUE=wallpack-jobs
+JOB_WORKER_BASE_URL=https://wallpackai-web--wallpackai.europe-west4.hosted.app
+JOB_WORKER_SECRET=...
+GENERATION_JOB_TIMEOUT_MS=1500000
+EXPORT_JOB_TIMEOUT_MS=900000
+```
+
+Create the queue in the same region as the app:
+
+```bash
+gcloud tasks queues create wallpack-jobs \
+  --project wallpackai \
+  --location europe-west4
+```
+
+Grant the App Hosting runtime service account permission to enqueue Cloud
+Tasks, and store `JOB_WORKER_SECRET` as a server-only secret. Cloud Tasks calls
+`/api/internal/jobs/generation/{jobId}` or `/api/internal/jobs/export/{jobId}`;
+those routes reject requests without `X-WallPack-Job-Secret`.
 
 ### Runware mode
 

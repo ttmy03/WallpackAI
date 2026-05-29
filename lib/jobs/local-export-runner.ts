@@ -14,6 +14,7 @@ import { createZipArchive } from "@/lib/export/zip";
 import { partitionEtsyUploadFiles } from "@/lib/etsy/file-partition";
 import { createListingCopy } from "@/lib/etsy/listing-copy";
 import {
+  claimFirestoreExportJob,
   getFirestoreExportJobForUser,
   saveFirestoreExportJob
 } from "@/lib/firestore/export-jobs";
@@ -73,6 +74,9 @@ type LocalExportJob = {
   updatedAt: Date;
   startedAt: Date | null;
   completedAt: Date | null;
+  leaseOwner: string | null;
+  leaseExpiresAt: Date | null;
+  attemptCount: number;
 };
 
 type LocalExportState = {
@@ -161,21 +165,22 @@ export async function enqueueLocalExportJob(input: EnqueueLocalExportInput) {
     createdAt: new Date(),
     updatedAt: new Date(),
     startedAt: null,
-    completedAt: null
+    completedAt: null,
+    leaseOwner: null,
+    leaseExpiresAt: null,
+    attemptCount: 0
   };
 
-  state.jobs.set(job.id, job);
+  if (!shouldPreferFirestoreJobClaim()) {
+    state.jobs.set(job.id, job);
+  }
   await persistExportJob(job);
-
-  setTimeout(() => {
-    void processLocalExportJob(job.id);
-  }, 0);
 
   return { ok: true as const, job: toExportJobView(job) };
 }
 
 export async function getLocalExportJobForUser(jobId: string, userId: string) {
-  const job = state.jobs.get(jobId);
+  const job = shouldPreferFirestoreJobClaim() ? undefined : state.jobs.get(jobId);
 
   if (job?.userId === userId) {
     await failTimedOutLocalExportJob(job, { now: new Date() });
@@ -278,18 +283,64 @@ export async function waitForLocalExportJob(
   throw new Error(`Timed out waiting for export job ${jobId}`);
 }
 
-async function processLocalExportJob(jobId: string) {
-  const job = state.jobs.get(jobId);
+async function claimExportJob(
+  jobId: string,
+  options: { leaseOwner: string }
+): Promise<LocalExportJob | null> {
+  const localJob = shouldPreferFirestoreJobClaim()
+    ? undefined
+    : state.jobs.get(jobId);
+  const now = new Date();
 
-  if (!job || job.status !== "queued") {
-    return;
+  if (localJob) {
+    if (localJob.status !== "queued") {
+      return null;
+    }
+
+    localJob.status = "validating";
+    localJob.stage = "credit_reservation";
+    localJob.startedAt = localJob.startedAt ?? now;
+    localJob.leaseOwner = options.leaseOwner;
+    localJob.leaseExpiresAt = new Date(now.getTime() + getExportJobTimeoutMs());
+    localJob.attemptCount += 1;
+    await persistExportJob(localJob);
+
+    return localJob;
   }
 
-  const timeout = scheduleLocalExportTimeout(job);
+  const record = await claimFirestoreExportJob(jobId, {
+    leaseOwner: options.leaseOwner,
+    leaseMs: getExportJobTimeoutMs(),
+    now
+  });
 
-  job.status = "validating";
-  job.stage = "credit_reservation";
-  job.startedAt = new Date();
+  if (!record) {
+    return null;
+  }
+
+  return localExportJobFromView(record.job, record.userId);
+}
+
+function shouldPreferFirestoreJobClaim() {
+  return process.env.NODE_ENV !== "test" && process.env.JOB_RUNNER === "cloud-tasks";
+}
+
+export async function processExportJob(
+  jobId: string,
+  options: { leaseOwner?: string } = {}
+) {
+  const job = await claimExportJob(jobId, {
+    leaseOwner: options.leaseOwner ?? `worker_${randomUUID()}`
+  });
+
+  if (!job) {
+    return { processed: false as const, job: null };
+  }
+
+  const timeout =
+    !shouldPreferFirestoreJobClaim() && state.jobs.has(jobId)
+      ? scheduleLocalExportTimeout(job)
+      : null;
 
   try {
     await persistExportJob(job);
@@ -306,7 +357,7 @@ async function processLocalExportJob(jobId: string) {
     if (isExportJobTerminal(job)) {
       await refundExportJobCredits(job, "Etsy pack export failed");
       await persistExportJob(job);
-      return;
+      return { processed: false as const, job: toExportJobView(job) };
     }
 
     await persistExportJob(job);
@@ -317,17 +368,17 @@ async function processLocalExportJob(jobId: string) {
 
     const project = await getRequiredProject(job);
     if (isExportJobTerminal(job)) {
-      return;
+      return { processed: false as const, job: toExportJobView(job) };
     }
 
     const artwork = await getRequiredArtwork(job);
     if (isExportJobTerminal(job)) {
-      return;
+      return { processed: false as const, job: toExportJobView(job) };
     }
 
     const source = await loadArtworkSource(artwork);
     if (isExportJobTerminal(job)) {
-      return;
+      return { processed: false as const, job: toExportJobView(job) };
     }
     const ratioSources = await loadArtworkRatioSources(
       artwork,
@@ -358,7 +409,7 @@ async function processLocalExportJob(jobId: string) {
     });
 
     if (isExportJobTerminal(job)) {
-      return;
+      return { processed: false as const, job: toExportJobView(job) };
     }
 
     job.status = "processing";
@@ -389,7 +440,7 @@ async function processLocalExportJob(jobId: string) {
     );
 
     if (isExportJobTerminal(job)) {
-      return;
+      return { processed: false as const, job: toExportJobView(job) };
     }
 
     job.warnings = [...job.warnings, ...partition.warnings];
@@ -409,7 +460,7 @@ async function processLocalExportJob(jobId: string) {
     });
 
     if (isExportJobTerminal(job)) {
-      return;
+      return { processed: false as const, job: toExportJobView(job) };
     }
 
     job.artifacts = artifacts;
@@ -423,7 +474,7 @@ async function processLocalExportJob(jobId: string) {
     });
 
     if (isExportJobTerminal(job)) {
-      return;
+      return { processed: false as const, job: toExportJobView(job) };
     }
 
     job.creditCommitted = true;
@@ -431,9 +482,10 @@ async function processLocalExportJob(jobId: string) {
     job.stage = "complete";
     job.completedAt = new Date();
     await persistExportJob(job);
+    return { processed: true as const, job: toExportJobView(job) };
   } catch (error) {
     if (isExportJobTerminal(job)) {
-      return;
+      return { processed: false as const, job: toExportJobView(job) };
     }
 
     job.status = "failed";
@@ -451,9 +503,16 @@ async function processLocalExportJob(jobId: string) {
     } finally {
       await persistExportJob(job).catch(() => undefined);
     }
+    return { processed: true as const, job: toExportJobView(job) };
   } finally {
-    clearTimeout(timeout);
+    if (timeout) {
+      clearTimeout(timeout);
+    }
   }
+}
+
+export async function processLocalExportJob(jobId: string) {
+  return processExportJob(jobId);
 }
 
 export function isStaleExportJobView(
@@ -1037,7 +1096,44 @@ function toExportJobView(job: LocalExportJob): ExportJobView {
     createdAt: job.createdAt.toISOString(),
     updatedAt: job.updatedAt.toISOString(),
     startedAt: job.startedAt?.toISOString() ?? null,
-    completedAt: job.completedAt?.toISOString() ?? null
+    completedAt: job.completedAt?.toISOString() ?? null,
+    leaseOwner: job.leaseOwner,
+    leaseExpiresAt: job.leaseExpiresAt?.toISOString() ?? null,
+    attemptCount: job.attemptCount
+  };
+}
+
+function localExportJobFromView(
+  job: ExportJobView,
+  userId: string
+): LocalExportJob {
+  return {
+    id: job.jobId,
+    userId,
+    projectId: job.projectId,
+    projectName: job.projectName,
+    artworkId: job.artworkId,
+    status: job.status,
+    stage: job.stage,
+    requestedRatioKeys: job.requestedRatioKeys,
+    creditCost: job.creditCost,
+    creditReserved: job.creditReserved,
+    creditCommitted: job.creditCommitted,
+    creditRefunded: job.creditRefunded,
+    retryable: job.retryable,
+    errorCode: job.errorCode,
+    errorMessage: job.errorMessage,
+    artifacts: job.artifacts,
+    files: job.files,
+    warnings: job.warnings,
+    externalDeliveryNotRecommended: job.externalDeliveryNotRecommended,
+    createdAt: dateFromIso(job.createdAt),
+    updatedAt: dateFromIso(job.updatedAt),
+    startedAt: nullableDateFromIso(job.startedAt),
+    completedAt: nullableDateFromIso(job.completedAt),
+    leaseOwner: job.leaseOwner,
+    leaseExpiresAt: nullableDateFromIso(job.leaseExpiresAt),
+    attemptCount: job.attemptCount
   };
 }
 
@@ -1064,4 +1160,18 @@ async function persistExportJob(job: LocalExportJob) {
 
 function safeStorageSegment(value: string) {
   return sanitizeFilename(value, "wallpack").replaceAll(".", "-");
+}
+
+function dateFromIso(value: string) {
+  return nullableDateFromIso(value) ?? new Date(0);
+}
+
+function nullableDateFromIso(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = new Date(value);
+
+  return Number.isNaN(timestamp.getTime()) ? null : timestamp;
 }
