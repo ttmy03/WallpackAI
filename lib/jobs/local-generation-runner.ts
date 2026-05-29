@@ -4,6 +4,11 @@ import sharp from "sharp";
 
 import { getImageProvider } from "@/lib/ai";
 import type { GeneratedImage, ImageProvider } from "@/lib/ai/image-provider";
+import {
+  IMAGE_PROVIDER_INSUFFICIENT_CREDITS,
+  imageProviderInsufficientCreditsMessage,
+  isImageProviderInsufficientCreditsError
+} from "@/lib/ai/provider-errors";
 import { RUNWARE_GPT_IMAGE_AIR_ID } from "@/lib/ai/providers/runware";
 import {
   InMemoryCreditLedger,
@@ -190,7 +195,9 @@ export async function getLocalGenerationJobForUser(
   jobId: string,
   userId: string
 ) {
-  const job = shouldPreferFirestoreJobClaim() ? undefined : state.jobs.get(jobId);
+  const job = shouldPreferFirestoreJobClaim()
+    ? undefined
+    : state.jobs.get(jobId);
 
   if (job?.userId === userId) {
     await failTimedOutLocalGenerationJob(job, { now: new Date() });
@@ -207,7 +214,9 @@ export async function getLocalGenerationJobForUser(
 }
 
 export async function cancelLocalGenerationJob(jobId: string, userId: string) {
-  const job = shouldPreferFirestoreJobClaim() ? undefined : state.jobs.get(jobId);
+  const job = shouldPreferFirestoreJobClaim()
+    ? undefined
+    : state.jobs.get(jobId);
 
   if (!job) {
     const persistedJob = await getFirestoreGenerationJobForUser(jobId, userId);
@@ -221,7 +230,10 @@ export async function cancelLocalGenerationJob(jobId: string, userId: string) {
       };
     }
 
-    if (persistedJob.status !== "queued" && persistedJob.status !== "validating") {
+    if (
+      persistedJob.status !== "queued" &&
+      persistedJob.status !== "validating"
+    ) {
       return cannotCancelResult(persistedJob.status);
     }
 
@@ -468,7 +480,9 @@ async function claimGenerationJob(
     localJob.stage = "credit_reservation";
     localJob.startedAt = localJob.startedAt ?? now;
     localJob.leaseOwner = options.leaseOwner;
-    localJob.leaseExpiresAt = new Date(now.getTime() + getGenerationJobTimeoutMs());
+    localJob.leaseExpiresAt = new Date(
+      now.getTime() + getGenerationJobTimeoutMs()
+    );
     localJob.attemptCount += 1;
     await persistGenerationJob(localJob);
 
@@ -489,7 +503,9 @@ async function claimGenerationJob(
 }
 
 function shouldPreferFirestoreJobClaim() {
-  return process.env.NODE_ENV !== "test" && process.env.JOB_RUNNER === "cloud-tasks";
+  return (
+    process.env.NODE_ENV !== "test" && process.env.JOB_RUNNER === "cloud-tasks"
+  );
 }
 
 export async function processGenerationJob(
@@ -580,20 +596,42 @@ export async function processGenerationJob(
 
     job.status = "failed";
     job.stage = "failed";
-    job.errorCode =
-      error instanceof InsufficientCreditsError
-        ? "INSUFFICIENT_CREDITS"
-        : "GENERATION_FAILED";
-    job.errorMessage =
-      error instanceof Error
-        ? error.message
-        : "Generation failed unexpectedly.";
-    job.retryable = !(error instanceof InsufficientCreditsError);
+    const failure = generationFailureFromError(error);
+    job.errorCode = failure.code;
+    job.errorMessage = failure.message;
+    job.retryable = failure.retryable;
     job.completedAt = new Date();
     await persistGenerationJob(job).catch(() => undefined);
     await persistProjectGenerated(job, "failed").catch(() => undefined);
     return { processed: true as const, job: toGenerationJobView(job) };
   }
+}
+
+function generationFailureFromError(error: unknown) {
+  if (error instanceof InsufficientCreditsError) {
+    return {
+      code: "INSUFFICIENT_CREDITS",
+      message: error.message,
+      retryable: false
+    };
+  }
+
+  if (isImageProviderInsufficientCreditsError(error)) {
+    return {
+      code: IMAGE_PROVIDER_INSUFFICIENT_CREDITS,
+      message: imageProviderInsufficientCreditsMessage("Image generation"),
+      retryable: true
+    };
+  }
+
+  return {
+    code: "GENERATION_FAILED",
+    message:
+      error instanceof Error
+        ? error.message
+        : "Generation failed unexpectedly.",
+    retryable: true
+  };
 }
 
 export async function processLocalGenerationJob(jobId: string) {

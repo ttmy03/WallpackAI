@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  IMAGE_PROVIDER_INSUFFICIENT_CREDITS,
+  imageProviderInsufficientCreditsMessage,
+  isImageProviderInsufficientCreditsError
+} from "@/lib/ai/provider-errors";
 import { getUpscaleProvider } from "@/lib/ai/upscale";
 import { ETSY_PACK_EXPORT_CREDIT_COST } from "@/lib/billing/plans";
 import { InsufficientCreditsError } from "@/lib/billing/credit-ledger";
@@ -180,7 +185,9 @@ export async function enqueueLocalExportJob(input: EnqueueLocalExportInput) {
 }
 
 export async function getLocalExportJobForUser(jobId: string, userId: string) {
-  const job = shouldPreferFirestoreJobClaim() ? undefined : state.jobs.get(jobId);
+  const job = shouldPreferFirestoreJobClaim()
+    ? undefined
+    : state.jobs.get(jobId);
 
   if (job?.userId === userId) {
     await failTimedOutLocalExportJob(job, { now: new Date() });
@@ -322,7 +329,9 @@ async function claimExportJob(
 }
 
 function shouldPreferFirestoreJobClaim() {
-  return process.env.NODE_ENV !== "test" && process.env.JOB_RUNNER === "cloud-tasks";
+  return (
+    process.env.NODE_ENV !== "test" && process.env.JOB_RUNNER === "cloud-tasks"
+  );
 }
 
 export async function processExportJob(
@@ -490,13 +499,10 @@ export async function processExportJob(
 
     job.status = "failed";
     job.stage = "failed";
-    job.errorCode =
-      error instanceof InsufficientCreditsError
-        ? "INSUFFICIENT_CREDITS"
-        : "EXPORT_FAILED";
-    job.errorMessage =
-      error instanceof Error ? error.message : "Export failed unexpectedly.";
-    job.retryable = !(error instanceof InsufficientCreditsError);
+    const failure = exportFailureFromError(error);
+    job.errorCode = failure.code;
+    job.errorMessage = failure.message;
+    job.retryable = failure.retryable;
     job.completedAt = new Date();
     try {
       await refundExportJobCredits(job, "Etsy pack export failed");
@@ -509,6 +515,31 @@ export async function processExportJob(
       clearTimeout(timeout);
     }
   }
+}
+
+function exportFailureFromError(error: unknown) {
+  if (error instanceof InsufficientCreditsError) {
+    return {
+      code: "INSUFFICIENT_CREDITS",
+      message: error.message,
+      retryable: false
+    };
+  }
+
+  if (isImageProviderInsufficientCreditsError(error)) {
+    return {
+      code: IMAGE_PROVIDER_INSUFFICIENT_CREDITS,
+      message: imageProviderInsufficientCreditsMessage("Etsy pack export"),
+      retryable: true
+    };
+  }
+
+  return {
+    code: "EXPORT_FAILED",
+    message:
+      error instanceof Error ? error.message : "Export failed unexpectedly.",
+    retryable: true
+  };
 }
 
 export async function processLocalExportJob(jobId: string) {
