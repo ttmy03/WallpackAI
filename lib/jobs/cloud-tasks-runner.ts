@@ -55,7 +55,7 @@ async function enqueueCloudTask(kind: JobKind, jobId: string) {
     cloudTaskIdFor(kind, jobId)
   );
   const url = `${requiredEnv("JOB_WORKER_BASE_URL").replace(/\/$/, "")}/api/internal/jobs/${kind}/${encodeURIComponent(jobId)}`;
-  const secret = requiredEnv("JOB_WORKER_SECRET");
+  const secret = requiredEnv("JOB_WORKER_SECRET").trim();
 
   try {
     await client.createTask({

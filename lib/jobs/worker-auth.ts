@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { fail } from "@/lib/api-response";
 
 export function requireJobWorker(request: Request) {
-  const expectedSecret = process.env.JOB_WORKER_SECRET;
+  const expectedSecret = process.env.JOB_WORKER_SECRET?.trim();
 
   if (!expectedSecret) {
     return {
@@ -20,7 +20,8 @@ export function requireJobWorker(request: Request) {
     };
   }
 
-  const providedSecret = request.headers.get("x-wallpack-job-secret") ?? "";
+  const providedSecret =
+    request.headers.get("x-wallpack-job-secret")?.trim() ?? "";
 
   if (!secretsMatch(providedSecret, expectedSecret)) {
     return {

@@ -267,6 +267,18 @@ describe("job workers", () => {
 
     expect(response.status).toBe(401);
   });
+
+  it("worker endpoint accepts secrets with surrounding whitespace", async () => {
+    process.env.JOB_WORKER_SECRET = "worker-secret\n";
+    const route = await import(
+      "@/app/api/internal/jobs/generation/[jobId]/route"
+    );
+    const response = await route.POST(workerRequest(), {
+      params: Promise.resolve({ jobId: "gen_missing" })
+    });
+
+    expect(response.status).toBe(200);
+  });
 });
 
 function workerRequest() {
