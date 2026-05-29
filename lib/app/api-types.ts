@@ -1,5 +1,5 @@
 import type { PlanStatus } from "@/lib/billing/plans";
-import type { FirestoreProject, ProjectCard } from "@/lib/firestore/projects";
+import type { FirestoreProject } from "@/lib/firestore/projects";
 import type {
   GeneratedArtworkPreview,
   GenerationJobView
@@ -9,7 +9,6 @@ import type { ExportJobView } from "@/lib/jobs/export-types";
 export type DashboardSummary = {
   plan: PlanStatus;
   creditBalance: number;
-  recentProjects: ProjectCard[];
   recentGenerationJobs: GenerationJobView[];
   jobsNeedingAction: number;
   recentExportsCount: number;

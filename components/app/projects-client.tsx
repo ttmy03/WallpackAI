@@ -71,8 +71,8 @@ export function ProjectsClient() {
   }
 
   return (
-    <main>
-      <div className="flex items-end justify-between gap-4">
+    <main className="min-w-0">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-medium uppercase tracking-[0.22em] text-muted-foreground">
             Projects
@@ -81,47 +81,85 @@ export function ProjectsClient() {
             Wall-art packs
           </h1>
         </div>
-        <Button asChild>
+        <Button asChild className="w-full sm:w-auto">
           <Link href="/app/new">New pack</Link>
         </Button>
       </div>
       <div className="mt-8 overflow-hidden rounded-lg border bg-card">
         {projects.length > 0 ? (
-          <table className="w-full text-left text-sm">
-            <thead className="bg-secondary">
-              <tr>
-                <th className="px-4 py-3 font-medium">Project</th>
-                <th className="px-4 py-3 font-medium">Style</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Updated</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
+          <>
+            <div className="divide-y md:hidden">
               {projects.map((project) => (
-                <tr key={project.id}>
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/app/projects/${project.id}/editor`}
-                      className="font-medium text-primary hover:underline"
-                    >
+                <Link
+                  key={project.id}
+                  href={`/app/projects/${project.id}/editor`}
+                  className="block p-4 transition hover:bg-secondary"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 break-words font-medium text-primary">
                       {project.name}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3">
-                    {styleLabel(project.stylePresetKey)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge variant={projectStatusVariant(project.status)}>
+                    </p>
+                    <Badge
+                      variant={projectStatusVariant(project.status)}
+                      className="shrink-0"
+                    >
                       {project.status}
                     </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {formatAppDate(project.updatedAt)}
-                  </td>
-                </tr>
+                  </div>
+                  <dl className="mt-3 grid gap-2 text-sm text-muted-foreground">
+                    <div>
+                      <dt className="font-medium text-foreground">Style</dt>
+                      <dd className="mt-0.5 break-words">
+                        {styleLabel(project.stylePresetKey)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="font-medium text-foreground">Updated</dt>
+                      <dd className="mt-0.5">
+                        {formatAppDate(project.updatedAt)}
+                      </dd>
+                    </div>
+                  </dl>
+                </Link>
               ))}
-            </tbody>
-          </table>
+            </div>
+
+            <table className="hidden w-full text-left text-sm md:table">
+              <thead className="bg-secondary">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Project</th>
+                  <th className="px-4 py-3 font-medium">Style</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Updated</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {projects.map((project) => (
+                  <tr key={project.id}>
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/app/projects/${project.id}/editor`}
+                        className="font-medium text-primary hover:underline"
+                      >
+                        {project.name}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3">
+                      {styleLabel(project.stylePresetKey)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant={projectStatusVariant(project.status)}>
+                        {project.status}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {formatAppDate(project.updatedAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
         ) : (
           <div className="p-6">
             <p className="font-medium">No projects yet</p>

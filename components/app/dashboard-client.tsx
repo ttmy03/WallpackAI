@@ -14,8 +14,7 @@ import { useEffect, useState } from "react";
 import { fetchAuthenticatedApi } from "@/components/app/authenticated-api";
 import {
   formatAppDate,
-  generationStatusVariant,
-  projectStatusVariant
+  generationStatusVariant
 } from "@/components/app/status-utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -135,44 +134,7 @@ export function DashboardClient() {
         </Card>
       </section>
 
-      <section className="mt-8 grid gap-6 lg:grid-cols-[1fr_0.8fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent projects</CardTitle>
-            <CardDescription>
-              Your latest Firestore-backed wall-art packs.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            {data.recentProjects.length > 0 ? (
-              data.recentProjects.map((project) => (
-                <Link
-                  key={project.id}
-                  href={`/app/projects/${project.id}/editor`}
-                  className="grid gap-3 rounded-md border p-4 transition hover:bg-secondary sm:grid-cols-[1fr_auto]"
-                >
-                  <div>
-                    <p className="font-medium">{project.name}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Updated {formatAppDate(project.updatedAt)}
-                    </p>
-                  </div>
-                  <Badge variant={projectStatusVariant(project.status)}>
-                    {project.status}
-                  </Badge>
-                </Link>
-              ))
-            ) : (
-              <EmptyState
-                title="No projects yet"
-                message="Create a pack to see real project data here."
-                actionHref="/app/new"
-                actionLabel="New pack"
-              />
-            )}
-          </CardContent>
-        </Card>
-
+      <section className="mt-8">
         <Card>
           <CardHeader>
             <CardTitle>Generation jobs</CardTitle>

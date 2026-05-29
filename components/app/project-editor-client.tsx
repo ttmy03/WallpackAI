@@ -4,6 +4,7 @@ import {
   Check,
   CreditCard,
   Download,
+  Info,
   Loader2,
   RefreshCw,
   Sparkles,
@@ -17,6 +18,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties
 } from "react";
@@ -551,9 +553,9 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
             )}
             Create Etsy Pack
           </Button>
+          <CreditUsageInfo />
         </div>
       </div>
-      <CreditUsageInfo />
 
       {action.message ? (
         <div className="mt-6 rounded-md border bg-secondary px-4 py-3 text-sm">
@@ -571,7 +573,7 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
       />
 
       <div className="mt-6 grid gap-4 xl:mt-8 xl:grid-cols-[220px_minmax(0,1fr)_360px] xl:gap-6">
-        <div className="order-2 min-w-0 xl:order-1">
+        <div className="order-1 min-w-0 xl:order-1">
           <ArtworkSelectorPanel
             artworks={detail.artworks}
             selectedArtworkId={selectedArtwork?.artworkId ?? null}
@@ -583,7 +585,7 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
           />
         </div>
 
-        <section className="order-1 min-w-0 rounded-lg border bg-card p-3 sm:p-4 xl:order-2">
+        <section className="order-2 min-w-0 rounded-lg border bg-card p-3 sm:p-4 xl:order-2">
           <SelectedArtworkPreview
             selectedArtwork={selectedArtwork}
             selectedArtworkSrc={selectedArtworkSrc}
@@ -630,23 +632,77 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
 }
 
 function CreditUsageInfo() {
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (detailsRef.current?.contains(target)) {
+        return;
+      }
+
+      setOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
   return (
-    <div className="mt-4 rounded-md border bg-secondary/40 px-4 py-3 text-sm">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <details
+      ref={detailsRef}
+      className="group relative"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary
+        className="flex size-10 cursor-pointer list-none items-center justify-center rounded-md border bg-background text-muted-foreground shadow-sm transition hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"
+        title="Credit usage"
+        aria-label="Credit usage"
+      >
+        <Info className="size-4" />
+      </summary>
+      <div className="absolute right-0 top-12 z-50 w-[min(calc(100vw-2rem),22rem)] rounded-md border bg-card p-4 text-sm shadow-lg">
         <p className="font-medium">Credit usage</p>
-        <div className="flex flex-wrap gap-2">
-          <Badge variant="secondary">
-            5-ratio variant: {GENERATION_PREVIEW_CREDIT_COST} credits
-          </Badge>
-          <Badge variant="secondary">
-            Etsy pack export: {ETSY_PACK_EXPORT_CREDIT_COST} credits
-          </Badge>
+        <div className="mt-3 grid gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">5-ratio variant</span>
+            <Badge variant="secondary">
+              {GENERATION_PREVIEW_CREDIT_COST} credits
+            </Badge>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">Etsy pack export</span>
+            <Badge variant="secondary">{ETSY_PACK_EXPORT_CREDIT_COST} credits</Badge>
+          </div>
         </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Credits are reserved when work starts and refunded on technical
+          failure.
+        </p>
       </div>
-      <p className="mt-2 text-muted-foreground">
-        Credits are reserved when work starts and refunded on technical failure.
-      </p>
-    </div>
+    </details>
   );
 }
 
@@ -1460,7 +1516,7 @@ function getProjectRatioKeys(detail: ProjectDetail) {
 }
 
 function compactExportWarnings(warnings: string[]) {
-  const enlargementFactors: number[] = [];
+  let hasEnlargementWarning = false;
   const otherWarnings: string[] = [];
 
   for (const warning of warnings) {
@@ -1468,49 +1524,22 @@ function compactExportWarnings(warnings: string[]) {
       warning
     );
 
-    const factor = match ? Number(match[1]) : Number.NaN;
-
-    if (Number.isFinite(factor)) {
-      enlargementFactors.push(factor);
+    if (match) {
+      hasEnlargementWarning = true;
       continue;
     }
 
     otherWarnings.push(warning);
   }
 
-  if (enlargementFactors.length === 0) {
+  if (!hasEnlargementWarning) {
     return otherWarnings;
   }
 
-  const sizeLabel =
-    enlargementFactors.length === 1
-      ? "Selected print size"
-      : `${enlargementFactors.length} print sizes`;
-  const verb = enlargementFactors.length === 1 ? "was" : "were";
-
   return [
-    `${sizeLabel} ${verb} enlarged ${formatScaleFactorRange(
-      enlargementFactors
-    )}. Check detail before listing.`,
+    "Print sizes were enlarged. Check detail before listing.",
     ...otherWarnings
   ];
-}
-
-function formatScaleFactorRange(factors: number[]) {
-  const finiteFactors = factors.filter(Number.isFinite);
-
-  if (finiteFactors.length === 0) {
-    return "";
-  }
-
-  const min = Math.min(...finiteFactors);
-  const max = Math.max(...finiteFactors);
-
-  if (min === max) {
-    return `${min.toFixed(1)}x`;
-  }
-
-  return `${min.toFixed(1)}-${max.toFixed(1)}x`;
 }
 
 function formatPrintSize(

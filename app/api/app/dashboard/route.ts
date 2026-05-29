@@ -6,7 +6,6 @@ import { requireAppUser } from "@/lib/auth/api-auth";
 import { getUserPlanStatus } from "@/lib/billing/plan-usage";
 import { listFirestoreExportJobsForUser } from "@/lib/firestore/export-jobs";
 import { listFirestoreGenerationJobsForUser } from "@/lib/firestore/generation-jobs";
-import { listFirestoreProjectsForUser } from "@/lib/firestore/projects";
 import { getCreditBalance } from "@/lib/jobs/local-generation-runner";
 
 export async function GET(request: Request) {
@@ -17,9 +16,6 @@ export async function GET(request: Request) {
       return auth.response;
     }
 
-    const recentProjects = await listFirestoreProjectsForUser(
-      auth.firestoreUser.id
-    );
     const recentGenerationJobs = await listFirestoreGenerationJobsForUser(
       auth.firestoreUser.id,
       { limit: 5 }
@@ -31,7 +27,6 @@ export async function GET(request: Request) {
     const data: DashboardSummary = {
       plan: await getUserPlanStatus(auth.firestoreUser),
       creditBalance: await getCreditBalance(auth.firestoreUser.id),
-      recentProjects: recentProjects.slice(0, 5),
       recentGenerationJobs,
       jobsNeedingAction: recentGenerationJobs.filter(
         (job) => job.status === "failed" || job.status === "cancelled"
