@@ -126,18 +126,19 @@ Production jobs use Cloud Tasks:
 ```txt
 JOB_RUNNER=cloud-tasks
 CLOUD_TASKS_PROJECT_ID=wallpackai
-CLOUD_TASKS_LOCATION=europe-west4
+CLOUD_TASKS_LOCATION=europe-west1
 CLOUD_TASKS_QUEUE=wallpack-jobs
 JOB_WORKER_BASE_URL=https://wallpackai-web--wallpackai.europe-west4.hosted.app
 JOB_WORKER_SECRET=<Secret Manager secret>
 ```
 
-Create the queue in `europe-west4`:
+Create the queue in `europe-west1`. App Hosting serves the app from
+`europe-west4`, but Cloud Tasks does not currently offer that region:
 
 ```bash
 gcloud tasks queues create wallpack-jobs \
   --project wallpackai \
-  --location europe-west4
+  --location europe-west1
 ```
 
 Grant the App Hosting runtime service account `roles/cloudtasks.enqueuer`.

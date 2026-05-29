@@ -128,7 +128,7 @@ env:
       - RUNTIME
 
   - variable: CLOUD_TASKS_LOCATION
-    value: europe-west4
+    value: europe-west1
     availability:
       - RUNTIME
 

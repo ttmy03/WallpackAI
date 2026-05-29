@@ -48,7 +48,7 @@ STRIPE_PRICE_BATCH_ID=
 JOB_RUNNER=local
 CREDIT_LEDGER_PROVIDER=firestore
 CLOUD_TASKS_PROJECT_ID=wallpackai
-CLOUD_TASKS_LOCATION=europe-west4
+CLOUD_TASKS_LOCATION=europe-west1
 CLOUD_TASKS_QUEUE=wallpack-jobs
 JOB_WORKER_BASE_URL=http://localhost:3100
 JOB_WORKER_SECRET=
@@ -120,7 +120,7 @@ and do not depend on the public API request lifecycle:
 ```bash
 JOB_RUNNER=cloud-tasks
 CLOUD_TASKS_PROJECT_ID=wallpackai
-CLOUD_TASKS_LOCATION=europe-west4
+CLOUD_TASKS_LOCATION=europe-west1
 CLOUD_TASKS_QUEUE=wallpack-jobs
 JOB_WORKER_BASE_URL=https://wallpackai-web--wallpackai.europe-west4.hosted.app
 JOB_WORKER_SECRET=...
@@ -128,12 +128,13 @@ GENERATION_JOB_TIMEOUT_MS=1500000
 EXPORT_JOB_TIMEOUT_MS=900000
 ```
 
-Create the queue in the same region as the app:
+Create the queue in `europe-west1`. App Hosting serves the app from
+`europe-west4`, but Cloud Tasks does not currently offer that region:
 
 ```bash
 gcloud tasks queues create wallpack-jobs \
   --project wallpackai \
-  --location europe-west4
+  --location europe-west1
 ```
 
 Grant the App Hosting runtime service account permission to enqueue Cloud
