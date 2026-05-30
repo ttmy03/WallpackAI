@@ -21,3 +21,11 @@
 - Chose Cloud Tasks for production dispatch because it integrates with Google ADC/IAM and Firebase App Hosting without custom signing code.
 - Kept Firestore as the source of truth for job status, leases, attempts, and idempotent credit reserve/commit/refund state.
 - Preserved a local job adapter for development and tests, with `LOCAL_JOB_AUTOPROCESS=false` available when a test needs to assert enqueue-only behavior.
+
+## 2026-05-30 Optional AI mockup packs
+
+- Added a separate optional `MockupJob` flow for seller-only Etsy listing mockups.
+- Mockup packs use the existing `ImageProvider` boundary with Runware GPT Image 2 in production, selected artwork as a reference image, and existing project room/style/niche data as context.
+- Mockup generation costs 5 credits, is available based on credit balance rather than paid-plan gating, and uses the same idempotent reserve/commit/refund pattern as other paid work.
+- Kept mockup outputs separate from buyer-facing Etsy upload ZIPs. The editor shows a gallery and a seller-only mockup ZIP download.
+- This does not replace deterministic export-pack print logic. Mockup provider bytes are stored as returned; no upscale or print-size postprocessing runs in this path.

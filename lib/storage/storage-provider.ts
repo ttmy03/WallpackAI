@@ -12,6 +12,10 @@ export type StoredObject = {
   bytes: number;
 };
 
+export type ListedObject = StoredObject & {
+  updatedAt?: string;
+};
+
 export type DownloadedObject = {
   path: string;
   bytes: Buffer;
@@ -25,6 +29,7 @@ export type SignedDownloadUrl = {
 
 export interface StorageProvider {
   uploadObject(input: UploadObjectInput): Promise<StoredObject>;
+  listObjects(prefix: string): Promise<ListedObject[]>;
   downloadObject(path: string): Promise<DownloadedObject>;
   createSignedDownloadUrl(
     path: string,

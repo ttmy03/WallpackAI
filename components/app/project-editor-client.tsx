@@ -35,6 +35,7 @@ import {
   exportStatusVariant,
   formatAppDate,
   generationStatusVariant,
+  mockupStatusVariant,
   projectStatusVariant
 } from "@/components/app/status-utils";
 import { Badge } from "@/components/ui/badge";
@@ -48,12 +49,14 @@ import {
 } from "@/components/ui/card";
 import type {
   ExportJobResponse,
+  MockupJobResponse,
   ProjectDetail,
   RetryGenerationResponse
 } from "@/lib/app/api-types";
 import {
   ETSY_PACK_EXPORT_CREDIT_COST,
-  GENERATION_PREVIEW_CREDIT_COST
+  GENERATION_PREVIEW_CREDIT_COST,
+  MOCKUP_PACK_CREDIT_COST
 } from "@/lib/billing/plans";
 import type { ExportJobView } from "@/lib/jobs/export-types";
 import type {
@@ -61,6 +64,7 @@ import type {
   GeneratedArtworkPreview,
   GenerationJobView
 } from "@/lib/jobs/generation-types";
+import type { MockupJobView } from "@/lib/jobs/mockup-types";
 import { presetKeyToPixels } from "@/lib/print/math";
 import {
   DEFAULT_AUTOMATIC_PRINT_RATIO_KEYS,
@@ -72,7 +76,7 @@ import { cn } from "@/lib/utils";
 type ActionState = {
   message: string | null;
   error: string | null;
-  pending: "delete" | "export" | "generate" | null;
+  pending: "delete" | "export" | "generate" | "mockup" | null;
 };
 
 type PreviewFrameStyle = CSSProperties & {
@@ -99,6 +103,12 @@ const TERMINAL_GENERATION_STATUSES = new Set<GenerationJobView["status"]>([
   "cancelled"
 ]);
 
+const TERMINAL_MOCKUP_STATUSES = new Set<MockupJobView["status"]>([
+  "succeeded",
+  "failed",
+  "cancelled"
+]);
+
 export function ProjectEditorClient({ projectId }: { projectId: string }) {
   const router = useRouter();
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
@@ -115,6 +125,9 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     pending: null
   });
   const [activeExportJobId, setActiveExportJobId] = useState<string | null>(
+    null
+  );
+  const [activeMockupJobId, setActiveMockupJobId] = useState<string | null>(
     null
   );
   const [activeGenerationJobId, setActiveGenerationJobId] = useState<
@@ -178,6 +191,8 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
   const latestExportJobStatus = detail?.latestExportJob?.status ?? null;
   const latestGenerationJobId = detail?.latestGenerationJob?.jobId ?? null;
   const latestGenerationJobStatus = detail?.latestGenerationJob?.status ?? null;
+  const latestMockupJobId = detail?.latestMockupJob?.jobId ?? null;
+  const latestMockupJobStatus = detail?.latestMockupJob?.status ?? null;
 
   useEffect(() => {
     const jobId =
@@ -237,6 +252,67 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     activeExportJobId,
     latestExportJobId,
     latestExportJobStatus,
+    loadProject
+  ]);
+
+  useEffect(() => {
+    const jobId =
+      activeMockupJobId ??
+      (latestMockupJobId &&
+      latestMockupJobStatus &&
+      !TERMINAL_MOCKUP_STATUSES.has(latestMockupJobStatus)
+        ? latestMockupJobId
+        : null);
+
+    if (!jobId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function pollMockupJob() {
+      try {
+        const job = await fetchAuthenticatedApi<MockupJobView>(
+          `/api/app/mockup-jobs/${jobId}`
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        setDetail((current) => mergeMockupJob(current, job));
+
+        if (TERMINAL_MOCKUP_STATUSES.has(job.status)) {
+          setActiveMockupJobId(null);
+          await loadProject();
+        }
+      } catch (caughtError) {
+        if (!cancelled) {
+          setAction({
+            message: null,
+            error:
+              caughtError instanceof Error
+                ? caughtError.message
+                : "Mockup status could not be refreshed.",
+            pending: null
+          });
+        }
+      }
+    }
+
+    void pollMockupJob();
+    const interval = window.setInterval(() => {
+      void pollMockupJob();
+    }, 2500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [
+    activeMockupJobId,
+    latestMockupJobId,
+    latestMockupJobStatus,
     loadProject
   ]);
 
@@ -395,6 +471,27 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     });
   }
 
+  async function startMockupPack() {
+    if (!detail || !selectedArtwork) {
+      return;
+    }
+
+    await runAction("mockup", "Mockup pack queued.", async () => {
+      const result = await fetchAuthenticatedApi<MockupJobResponse>(
+        `/api/app/projects/${projectId}/mockups`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            artworkId: selectedArtwork.artworkId,
+            ratioKey: selectedRatioKey
+          })
+        }
+      );
+      setActiveMockupJobId(result.jobId);
+      await loadProject();
+    });
+  }
+
   async function startVariantGeneration() {
     if (!detail) {
       return;
@@ -452,6 +549,19 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     });
   }
 
+  async function retryMockup(jobId: string) {
+    await runAction("mockup", "Mockup pack queued.", async () => {
+      const result = await fetchAuthenticatedApi<MockupJobResponse>(
+        `/api/app/mockup-jobs/${jobId}/retry`,
+        {
+          method: "POST"
+        }
+      );
+      setActiveMockupJobId(result.jobId);
+      await loadProject();
+    });
+  }
+
   async function deleteProject() {
     const confirmed = window.confirm(
       "Delete this project and its generated files? This cannot be undone."
@@ -474,16 +584,38 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
     detail?.latestGenerationJob ?? detail?.generationJobs[0] ?? null;
   const latestExportJob =
     detail?.latestExportJob ?? detail?.exportJobs[0] ?? null;
+  const latestMockupJob =
+    detail?.latestMockupJob ?? detail?.mockupJobs[0] ?? null;
+  const latestMockupPackJob = detail
+    ? findLatestMockupPackJob([
+        ...detail.mockupJobs,
+        ...(detail.latestMockupPackJob ? [detail.latestMockupPackJob] : [])
+      ])
+    : null;
   const generationRunning = Boolean(
     latestJob && !TERMINAL_GENERATION_STATUSES.has(latestJob.status)
   );
   const exportRunning = Boolean(
     latestExportJob && !TERMINAL_EXPORT_STATUSES.has(latestExportJob.status)
   );
+  const mockupRunning = Boolean(
+    latestMockupJob && !TERMINAL_MOCKUP_STATUSES.has(latestMockupJob.status)
+  );
   const canGenerateVariant =
-    Boolean(detail) && !generationRunning && action.pending === null;
+    Boolean(detail) &&
+    !generationRunning &&
+    action.pending !== "generate" &&
+    action.pending !== "delete";
   const canCreateExport =
-    Boolean(selectedArtwork) && !exportRunning && action.pending === null;
+    Boolean(selectedArtwork) &&
+    !exportRunning &&
+    action.pending !== "export" &&
+    action.pending !== "delete";
+  const canCreateMockup =
+    Boolean(selectedArtwork) &&
+    !mockupRunning &&
+    action.pending !== "mockup" &&
+    action.pending !== "delete";
 
   if (loadError) {
     return (
@@ -605,7 +737,7 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
           />
         </section>
 
-        <div className="order-3 min-w-0 xl:order-3">
+        <div className="order-3 grid min-w-0 gap-4 xl:order-3">
           <PrintSizesPanel
             projectRatioKeys={projectRatioKeys}
             selectedRatioKey={selectedRatioKey}
@@ -613,6 +745,16 @@ export function ProjectEditorClient({ projectId }: { projectId: string }) {
             selectedRatioPixels={selectedRatioPixels}
             latestExportFiles={latestExportJob?.files ?? []}
             onSelectRatio={setSelectedRatioKey}
+          />
+          <MockupPanel
+            latestJob={latestMockupJob}
+            packJob={latestMockupPackJob}
+            canCreateMockup={canCreateMockup}
+            mockupRunning={mockupRunning}
+            actionPending={action.pending}
+            retryDisabled={action.pending === "delete"}
+            onCreate={() => void startMockupPack()}
+            onRetry={(jobId) => void retryMockup(jobId)}
           />
         </div>
 
@@ -695,6 +837,10 @@ function CreditUsageInfo() {
           <div className="flex items-center justify-between gap-3">
             <span className="text-muted-foreground">Etsy pack export</span>
             <Badge variant="secondary">{ETSY_PACK_EXPORT_CREDIT_COST} credits</Badge>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">Mockup pack</span>
+            <Badge variant="secondary">{MOCKUP_PACK_CREDIT_COST} credits</Badge>
           </div>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
@@ -902,6 +1048,332 @@ function ArtworkThumbnailButton({
         </span>
       )}
     </button>
+  );
+}
+
+function MockupPanel({
+  latestJob,
+  packJob,
+  canCreateMockup,
+  mockupRunning,
+  actionPending,
+  retryDisabled,
+  onCreate,
+  onRetry
+}: {
+  latestJob: MockupJobView | null;
+  packJob: MockupJobView | null;
+  canCreateMockup: boolean;
+  mockupRunning: boolean;
+  actionPending: ActionState["pending"];
+  retryDisabled: boolean;
+  onCreate: () => void;
+  onRetry: (jobId: string) => void;
+}) {
+  const [downloadState, setDownloadState] = useState<{
+    artifactId: string | null;
+    error: string | null;
+  }>({ artifactId: null, error: null });
+  const running = Boolean(
+    latestJob && !TERMINAL_MOCKUP_STATUSES.has(latestJob.status)
+  );
+
+  async function downloadArtifact(
+    jobId: string,
+    artifact: MockupJobView["artifacts"][number]
+  ) {
+    setDownloadState({ artifactId: artifact.artifactId, error: null });
+
+    try {
+      const response = await fetchAuthenticatedBlob(
+        `/api/app/mockup-jobs/${encodeURIComponent(
+          jobId
+        )}/artifacts/${encodeURIComponent(artifact.artifactId)}/download`
+      );
+
+      triggerBrowserDownload(
+        response.blob,
+        response.fileName ?? artifact.fileName
+      );
+      setDownloadState({ artifactId: null, error: null });
+    } catch (caughtError) {
+      setDownloadState({
+        artifactId: null,
+        error:
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Mockup pack could not be downloaded."
+      });
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="p-4 xl:p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle>Mockups</CardTitle>
+            <CardDescription>Optional seller listing images</CardDescription>
+          </div>
+          <Badge variant="secondary">{MOCKUP_PACK_CREDIT_COST} credits</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-4 p-4 pt-0 xl:p-5 xl:pt-0">
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          disabled={!canCreateMockup}
+          onClick={onCreate}
+          title="Create five AI mockup images from the selected artwork and project room."
+        >
+          {actionPending === "mockup" || mockupRunning ? (
+            <Loader2 className="animate-spin" />
+          ) : (
+            <Sparkles />
+          )}
+          Create Mockup Pack
+        </Button>
+
+        {latestJob ? (
+          <div className="rounded-md border p-3 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="font-medium">Latest mockup job</p>
+                <p className="mt-1 text-muted-foreground">
+                  {latestJob.stage ?? "queued"} · {latestJob.creditCost}{" "}
+                  credits · {formatAppDate(latestJob.createdAt)}
+                </p>
+              </div>
+              <Badge variant={mockupStatusVariant(latestJob.status)}>
+                {latestJob.status}
+              </Badge>
+            </div>
+
+            {running ? (
+              <div className="mt-3 flex items-start gap-2 text-muted-foreground">
+                <Loader2 className="mt-0.5 size-4 animate-spin" />
+                <span>Creating seller mockups from the selected artwork.</span>
+              </div>
+            ) : null}
+
+            {latestJob.errorMessage ? (
+              <div className="mt-3 grid gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2">
+                <p className="text-destructive">{latestJob.errorMessage}</p>
+                {latestJob.retryable ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-fit"
+                    disabled={retryDisabled || actionPending === "mockup"}
+                    onClick={() => onRetry(latestJob.jobId)}
+                  >
+                    <RefreshCw />
+                    Retry mockups
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {packJob ? (
+          <div className="rounded-md border p-3 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="font-medium">
+                  {packJob.status === "succeeded"
+                    ? "Last successful mockup pack"
+                    : "Last saved mockup pack"}
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  {formatAppDate(packJob.completedAt ?? packJob.createdAt)} ·{" "}
+                  {packJob.images.length} images
+                </p>
+              </div>
+              <Badge
+                variant={
+                  packJob.status === "succeeded" ? "secondary" : "warning"
+                }
+              >
+                {packJob.status === "succeeded" ? "Ready" : "Saved"}
+              </Badge>
+            </div>
+
+            {packJob.images.length > 0 ? (
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                {packJob.images.map((image) => (
+                  <MockupImagePreview
+                    key={image.imageId}
+                    jobId={packJob.jobId}
+                    image={image}
+                  />
+                ))}
+              </div>
+            ) : null}
+
+            {downloadState.error ? (
+              <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-destructive">
+                {downloadState.error}
+              </p>
+            ) : null}
+
+            {packJob.artifacts.length > 0 ? (
+              <div className="mt-4 grid gap-2">
+                {packJob.artifacts.map((artifact) =>
+                  artifact.downloadUrl ? (
+                    <Button
+                      key={artifact.artifactId}
+                      asChild
+                      variant="outline"
+                      size="sm"
+                      className="h-auto min-h-9 w-full min-w-0 flex-col items-stretch justify-between gap-1 whitespace-normal px-3 py-2 text-left sm:flex-row sm:items-center sm:gap-3"
+                    >
+                      <a
+                        href={artifact.downloadUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={artifact.fileName}
+                      >
+                        <span className="min-w-0 flex-1 truncate font-mono text-xs sm:text-sm">
+                          {artifact.fileName}
+                        </span>
+                        <span className="inline-flex shrink-0 items-center gap-2 self-end text-muted-foreground sm:self-auto">
+                          {formatBytes(artifact.bytes)}
+                          <Download />
+                        </span>
+                      </a>
+                    </Button>
+                  ) : (
+                    <Button
+                      key={artifact.artifactId}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-auto min-h-9 w-full min-w-0 flex-col items-stretch justify-between gap-1 whitespace-normal px-3 py-2 text-left sm:flex-row sm:items-center sm:gap-3"
+                      disabled={
+                        downloadState.artifactId === artifact.artifactId
+                      }
+                      onClick={() =>
+                        void downloadArtifact(packJob.jobId, artifact)
+                      }
+                    >
+                      <span className="min-w-0 flex-1 truncate font-mono text-xs sm:text-sm">
+                        {artifact.fileName}
+                      </span>
+                      <span className="inline-flex shrink-0 items-center gap-2 self-end text-muted-foreground sm:self-auto">
+                        {formatBytes(artifact.bytes)}
+                        {downloadState.artifactId === artifact.artifactId ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Download />
+                        )}
+                      </span>
+                    </Button>
+                  )
+                )}
+              </div>
+            ) : null}
+          </div>
+        ) : latestJob ? (
+          <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+            No saved mockup pack yet.
+          </div>
+        ) : (
+          <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+            Create mockups after choosing a generated artwork.
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function MockupImagePreview({
+  jobId,
+  image
+}: {
+  jobId: string;
+  image: MockupJobView["images"][number];
+}) {
+  const directSrc = image.dataUrl ?? null;
+  const [preview, setPreview] = useState<{
+    src: string | null;
+    loading: boolean;
+    error: string | null;
+  }>({
+    src: null,
+    loading: !directSrc,
+    error: null
+  });
+
+  useEffect(() => {
+    if (directSrc) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadPreview() {
+      try {
+        const response = await fetchAuthenticatedBlob(
+          `/api/app/mockup-jobs/${encodeURIComponent(
+            jobId
+          )}/images/${encodeURIComponent(image.imageId)}/preview`
+        );
+        const dataUrl = await blobToDataUrl(response.blob);
+
+        if (!cancelled) {
+          setPreview({ src: dataUrl, loading: false, error: null });
+        }
+      } catch (caughtError) {
+        if (!cancelled) {
+          setPreview({
+            src: image.previewUrl ?? null,
+            loading: false,
+            error:
+              caughtError instanceof Error
+                ? caughtError.message
+                : "Mockup preview could not be loaded."
+          });
+        }
+      }
+    }
+
+    void loadPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [directSrc, image.imageId, image.previewUrl, jobId]);
+
+  const src = directSrc ?? preview.src;
+
+  return (
+    <div
+      className="relative aspect-square overflow-hidden rounded-md bg-secondary"
+      title={preview.error ?? image.fileName}
+    >
+      {src ? (
+        <Image
+          src={src}
+          alt="Generated Etsy mockup"
+          fill
+          unoptimized
+          sizes="(min-width: 1280px) 150px, 45vw"
+          className="object-cover"
+        />
+      ) : preview.loading ? (
+        <span className="grid size-full place-items-center px-3 text-center text-xs text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" />
+        </span>
+      ) : (
+        <span className="grid size-full place-items-center px-3 text-center text-xs text-muted-foreground">
+          Preview unavailable
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -1145,6 +1617,25 @@ function getArtworkPreviewSrc(artwork: GeneratedArtworkPreview) {
     artwork.dimensionPreviews?.[0]?.dataUrl ??
     artwork.dimensionPreviews?.[0]?.previewUrl
   );
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onerror = () => {
+      reject(reader.error ?? new Error("Preview image could not be decoded."));
+    };
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+
+      reject(new Error("Preview image could not be decoded."));
+    };
+    reader.readAsDataURL(blob);
+  });
 }
 
 function JobStatusPanels({
@@ -1572,6 +2063,43 @@ function mergeExportJob(
     exportJobs,
     latestExportJob: exportJobs[0] ?? null
   };
+}
+
+function mergeMockupJob(
+  detail: ProjectDetail | null,
+  job: MockupJobView
+): ProjectDetail | null {
+  if (!detail) {
+    return detail;
+  }
+
+  const mockupJobs = [
+    job,
+    ...detail.mockupJobs.filter((candidate) => candidate.jobId !== job.jobId)
+  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const latestMockupPackJob = findLatestMockupPackJob([
+    ...mockupJobs,
+    ...(detail.latestMockupPackJob ? [detail.latestMockupPackJob] : [])
+  ]);
+
+  return {
+    ...detail,
+    mockupJobs,
+    latestMockupJob: mockupJobs[0] ?? null,
+    latestMockupPackJob
+  };
+}
+
+function findLatestMockupPackJob(jobs: MockupJobView[]) {
+  return (
+    jobs
+      .filter(hasMockupPackAssets)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null
+  );
+}
+
+function hasMockupPackAssets(job: MockupJobView) {
+  return job.images.length > 0 || job.artifacts.length > 0;
 }
 
 function mergeGenerationJob(

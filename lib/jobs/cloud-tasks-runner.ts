@@ -2,15 +2,18 @@ import type { CloudTasksClient } from "@google-cloud/tasks";
 
 import type {
   EnqueueExportJobResult,
+  EnqueueMockupJobResult,
   EnqueuedGenerationJob,
   ExportJobInput,
   GenerationJobInput,
+  MockupJobInput,
   JobRunner
 } from "@/lib/jobs/job-runner";
 import { enqueueLocalExportJob } from "@/lib/jobs/local-export-runner";
 import { enqueueLocalGenerationJob } from "@/lib/jobs/local-generation-runner";
+import { enqueueLocalMockupJob } from "@/lib/jobs/local-mockup-runner";
 
-type JobKind = "generation" | "export";
+type JobKind = "generation" | "export" | "mockup";
 
 let cloudTasksClient: CloudTasksClient | null = null;
 
@@ -33,6 +36,16 @@ export class CloudTasksJobRunner implements JobRunner {
 
     if (queued.ok) {
       await enqueueCloudTask("export", queued.job.jobId);
+    }
+
+    return queued;
+  }
+
+  async enqueueMockup(input: MockupJobInput): Promise<EnqueueMockupJobResult> {
+    const queued = await enqueueLocalMockupJob(input);
+
+    if (queued.ok) {
+      await enqueueCloudTask("mockup", queued.job.jobId);
     }
 
     return queued;
@@ -104,7 +117,9 @@ function dispatchDeadlineSecondsFor(kind: JobKind) {
   const timeoutMs =
     kind === "generation"
       ? readPositiveIntegerEnv("GENERATION_JOB_TIMEOUT_MS", 25 * 60 * 1000)
-      : readPositiveIntegerEnv("EXPORT_JOB_TIMEOUT_MS", 15 * 60 * 1000);
+      : kind === "export"
+        ? readPositiveIntegerEnv("EXPORT_JOB_TIMEOUT_MS", 15 * 60 * 1000)
+        : readPositiveIntegerEnv("MOCKUP_JOB_TIMEOUT_MS", 15 * 60 * 1000);
 
   return Math.min(30 * 60, Math.max(15, Math.ceil(timeoutMs / 1000) + 30));
 }

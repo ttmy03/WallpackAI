@@ -5,6 +5,7 @@ export const FREE_PLAN_PREVIEWS_PER_BATCH = 1;
 export const FREE_PLAN_ONE_TIME_PREVIEW_CREDITS = 15;
 export const GENERATION_PREVIEW_CREDIT_COST = 5;
 export const ETSY_PACK_EXPORT_CREDIT_COST = 5;
+export const MOCKUP_PACK_CREDIT_COST = 5;
 
 export const PLAN_KEYS = ["free", "starter", "studio", "batch"] as const;
 export const PAID_PLAN_KEYS = ["starter", "studio", "batch"] as const;

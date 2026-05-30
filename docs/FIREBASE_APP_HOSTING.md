@@ -107,6 +107,7 @@ WallPack AI now uses Firestore for account-scoped app metadata:
 users/{firebaseUid}
 projects/{projectId}
 generationJobs/{jobId}
+mockupJobs/{jobId}
 artworks/{artworkId}
 creditLedgerEntries/{entryId}
 ```
@@ -118,6 +119,10 @@ with `userId = firebaseUid`.
 Generated image bytes are not stored in Firestore. Source images are uploaded to
 Firebase Storage under user-scoped paths, and Firestore stores storage paths,
 dimensions, job status, errors, and retry metadata.
+
+Optional seller mockups are also job-backed. `mockupJobs/{jobId}` stores status,
+image metadata, and the seller-only ZIP artifact. Mockup image bytes and ZIPs
+are stored under `mockups/{userId}/{projectId}/{jobId}/`.
 
 ## Production Job Queue
 
@@ -145,6 +150,7 @@ Grant the App Hosting runtime service account `roles/cloudtasks.enqueuer`.
 Cloud Tasks dispatches one persisted Firestore job to an internal worker route,
 which validates `X-WallPack-Job-Secret`, claims the queued job with a Firestore
 lease, and then updates Firestore status through completion or failure.
+Current worker kinds are `generation`, `export`, and `mockup`.
 
 Firestore client writes are denied by rules. The Next.js server writes through
 Firebase Admin after token verification. Authenticated users may read their own

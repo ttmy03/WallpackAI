@@ -4,6 +4,7 @@ import {
   assertFirestoreDocumentId,
   creditLedgerEntryDocumentPath,
   generationJobDocumentPath,
+  mockupJobDocumentPath,
   projectDocumentPath,
   stripeWebhookEventDocumentPath,
   subscriptionDocumentPath,
@@ -11,7 +12,11 @@ import {
 } from "@/lib/firestore/collections";
 import { firestoreExportJobFromDocument } from "@/lib/firestore/export-jobs";
 import { firestoreGenerationJobFromDocument } from "@/lib/firestore/generation-jobs";
-import { firestoreProjectFromDocument } from "@/lib/firestore/projects";
+import { firestoreMockupJobFromDocument } from "@/lib/firestore/mockup-jobs";
+import {
+  firestoreProjectFromDocument,
+  projectStoragePathsFromDocuments
+} from "@/lib/firestore/projects";
 import { firestoreUserFromDocument } from "@/lib/firestore/users";
 import type { PromptInput } from "@/lib/prompts/schema";
 
@@ -33,6 +38,7 @@ describe("Firestore persistence helpers", () => {
     expect(userDocumentPath("firebase-user-1")).toBe("users/firebase-user-1");
     expect(projectDocumentPath("prj_123")).toBe("projects/prj_123");
     expect(generationJobDocumentPath("gen_123")).toBe("generationJobs/gen_123");
+    expect(mockupJobDocumentPath("mck_123")).toBe("mockupJobs/mck_123");
     expect(creditLedgerEntryDocumentPath("cle_123")).toBe(
       "creditLedgerEntries/cle_123"
     );
@@ -93,6 +99,44 @@ describe("Firestore persistence helpers", () => {
     ]);
   });
 
+  it("collects project storage paths including mockup jobs", () => {
+    expect(
+      projectStoragePathsFromDocuments([
+        {
+          sourceStoragePath: "sources/user-1/project-1/art-1/source.png",
+          previewStoragePath: "previews/user-1/project-1/art-1/preview.jpg",
+          dimensionPreviews: [
+            {
+              sourceStoragePath: "sources/user-1/project-1/art-1/2x3.png",
+              previewStoragePath: "previews/user-1/project-1/art-1/2x3.jpg"
+            }
+          ]
+        },
+        {
+          artifacts: [
+            { storagePath: "exports/user-1/project-1/job-1/pack-1.zip" }
+          ]
+        },
+        {
+          images: [
+            { storagePath: "mockups/user-1/project-1/mck-1/mockup-1.jpg" }
+          ],
+          artifacts: [
+            { storagePath: "mockups/user-1/project-1/mck-1/mockups.zip" }
+          ]
+        }
+      ])
+    ).toEqual([
+      "sources/user-1/project-1/art-1/source.png",
+      "previews/user-1/project-1/art-1/preview.jpg",
+      "sources/user-1/project-1/art-1/2x3.png",
+      "previews/user-1/project-1/art-1/2x3.jpg",
+      "exports/user-1/project-1/job-1/pack-1.zip",
+      "mockups/user-1/project-1/mck-1/mockups.zip",
+      "mockups/user-1/project-1/mck-1/mockup-1.jpg"
+    ]);
+  });
+
   it("maps Firestore generation jobs without image bytes", () => {
     const job = firestoreGenerationJobFromDocument("gen_123", {
       projectId: "prj_123",
@@ -131,6 +175,72 @@ describe("Firestore persistence helpers", () => {
     expect(job.status).toBe("running");
     expect(job.updatedAt).toBe("2026-05-24T19:01:00.000Z");
     expect(job.creditRefunded).toBe(false);
+  });
+
+  it("maps Firestore mockup jobs with images and artifacts", () => {
+    const job = firestoreMockupJobFromDocument("mck_123", {
+      projectId: "prj_123",
+      projectName: "Mountain calm set",
+      artworkId: "art_123",
+      ratioKey: "2x3",
+      status: "succeeded",
+      creditCost: 5,
+      creditReserved: true,
+      creditCommitted: true,
+      prompt: "mockup prompt",
+      images: [
+        {
+          imageId: "mcki_1",
+          fileName: "mockup-1.png",
+          storagePath: "mockups/user/prj/mck/mockup-1.png",
+          contentType: "image/png",
+          bytes: 123,
+          width: 960,
+          height: 960,
+          createdAt: "2026-05-30T10:00:00.000Z"
+        }
+      ],
+      artifacts: [
+        {
+          artifactId: "mcka_1",
+          kind: "mockup_zip",
+          fileName: "mockups.zip",
+          storagePath: "mockups/user/prj/mck/mockups.zip",
+          contentType: "application/zip",
+          bytes: 456,
+          createdAt: "2026-05-30T10:00:00.000Z"
+        }
+      ],
+      createdAt: "2026-05-30T10:00:00.000Z"
+    });
+
+    expect(job.jobId).toBe("mck_123");
+    expect(job.status).toBe("succeeded");
+    expect(job.ratioKey).toBe("2x3");
+    expect(job.images).toHaveLength(1);
+    expect(job.artifacts[0]?.kind).toBe("mockup_zip");
+  });
+
+  it("maps legacy completed mockup statuses as terminal successes", () => {
+    const job = firestoreMockupJobFromDocument("mck_legacy", {
+      projectId: "prj_123",
+      artworkId: "art_123",
+      status: "complete",
+      completedAt: "2026-05-30T10:10:00.000Z",
+      createdAt: "2026-05-30T10:00:00.000Z",
+      images: [
+        {
+          imageId: "mcki_1",
+          fileName: "mockup-1.png",
+          storagePath: "mockups/user/prj/mck/mockup-1.png",
+          width: 960,
+          height: 960
+        }
+      ]
+    });
+
+    expect(job.status).toBe("succeeded");
+    expect(job.images).toHaveLength(1);
   });
 
   it("maps Firestore user settings with AI disclosure enabled by default", () => {

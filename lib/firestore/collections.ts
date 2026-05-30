@@ -3,6 +3,7 @@ export const FIRESTORE_COLLECTIONS = {
   projects: "projects",
   generationJobs: "generationJobs",
   exportJobs: "exportJobs",
+  mockupJobs: "mockupJobs",
   artworks: "artworks",
   creditLedgerEntries: "creditLedgerEntries",
   subscriptions: "subscriptions",
@@ -40,6 +41,13 @@ export function generationJobDocumentPath(jobId: string) {
 
 export function exportJobDocumentPath(jobId: string) {
   return `${FIRESTORE_COLLECTIONS.exportJobs}/${assertFirestoreDocumentId(
+    jobId,
+    "jobId"
+  )}`;
+}
+
+export function mockupJobDocumentPath(jobId: string) {
+  return `${FIRESTORE_COLLECTIONS.mockupJobs}/${assertFirestoreDocumentId(
     jobId,
     "jobId"
   )}`;

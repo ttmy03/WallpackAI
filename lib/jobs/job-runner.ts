@@ -1,5 +1,6 @@
 import type { GenerationQuality } from "@/lib/jobs/generation-types";
 import type { ExportJobView } from "@/lib/jobs/export-types";
+import type { MockupJobView } from "@/lib/jobs/mockup-types";
 import { CloudTasksJobRunner } from "@/lib/jobs/cloud-tasks-runner";
 import { LocalJobRunner } from "@/lib/jobs/local-job-runner";
 import type { PrintRatioPresetKey } from "@/lib/print/presets";
@@ -32,6 +33,13 @@ export type ExportJobInput = {
   ratioKeys?: PrintRatioPresetKey[];
 };
 
+export type MockupJobInput = {
+  userId: string;
+  projectId: string;
+  artworkId: string;
+  ratioKey?: PrintRatioPresetKey;
+};
+
 export type EnqueuedGenerationJob = {
   jobId: string;
   status: JobStatus;
@@ -49,9 +57,14 @@ export type EnqueueExportJobResult =
   | { ok: true; job: ExportJobView }
   | EnqueueJobFailure;
 
+export type EnqueueMockupJobResult =
+  | { ok: true; job: MockupJobView }
+  | EnqueueJobFailure;
+
 export interface JobRunner {
   enqueueGeneration(input: GenerationJobInput): Promise<EnqueuedGenerationJob>;
   enqueueExport(input: ExportJobInput): Promise<EnqueueExportJobResult>;
+  enqueueMockup(input: MockupJobInput): Promise<EnqueueMockupJobResult>;
 }
 
 let jobRunner: JobRunner | null = null;

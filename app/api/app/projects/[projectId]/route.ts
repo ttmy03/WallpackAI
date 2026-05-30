@@ -6,6 +6,10 @@ import { requireAppUser } from "@/lib/auth/api-auth";
 import { getUserPlanStatus } from "@/lib/billing/plan-usage";
 import { listFirestoreExportJobsForUser } from "@/lib/firestore/export-jobs";
 import {
+  getLatestFirestoreMockupPackJobForUser,
+  listFirestoreMockupJobsForUser
+} from "@/lib/firestore/mockup-jobs";
+import {
   getFirestoreGenerationJobForUser,
   listFirestoreArtworksForProject,
   listFirestoreGenerationJobsForUser
@@ -59,6 +63,18 @@ export async function GET(
       auth.firestoreUser.id,
       { projectId: project.id, limit: 5 }
     );
+    const mockupJobs = await listFirestoreMockupJobsForUser(
+      auth.firestoreUser.id,
+      {
+        projectId: project.id,
+        limit: 5,
+        includeSignedDownloadUrls: false
+      }
+    );
+    const latestMockupPackJob = await getLatestFirestoreMockupPackJobForUser(
+      auth.firestoreUser.id,
+      { projectId: project.id, includeSignedDownloadUrls: false }
+    );
     const data: ProjectDetail = {
       plan: await getUserPlanStatus(auth.firestoreUser),
       project,
@@ -66,6 +82,9 @@ export async function GET(
       latestGenerationJob,
       exportJobs,
       latestExportJob: exportJobs[0] ?? null,
+      mockupJobs,
+      latestMockupJob: mockupJobs[0] ?? null,
+      latestMockupPackJob,
       artworks
     };
 

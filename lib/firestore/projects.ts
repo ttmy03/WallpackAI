@@ -116,7 +116,7 @@ export async function deleteFirestoreProjectForUser(input: {
   }
 
   const db = getFirebaseFirestore();
-  const [artworks, generationJobs, exportJobs] = await Promise.all([
+  const [artworks, generationJobs, exportJobs, mockupJobs] = await Promise.all([
     db
       .collection(FIRESTORE_COLLECTIONS.artworks)
       .where("userId", "==", input.userId)
@@ -127,6 +127,10 @@ export async function deleteFirestoreProjectForUser(input: {
       .get(),
     db
       .collection(FIRESTORE_COLLECTIONS.exportJobs)
+      .where("userId", "==", input.userId)
+      .get(),
+    db
+      .collection(FIRESTORE_COLLECTIONS.mockupJobs)
       .where("userId", "==", input.userId)
       .get()
   ]);
@@ -139,17 +143,14 @@ export async function deleteFirestoreProjectForUser(input: {
     exportJobs.docs,
     input.projectId
   );
-  const storagePaths = [
-    ...artworkDocs.flatMap((doc) => [
-      nullableString(doc.data().sourceStoragePath),
-      nullableString(doc.data().previewStoragePath),
-      ...artworkDimensionPreviewStoragePaths(doc.data().dimensionPreviews)
-    ]),
-    ...exportJobDocs.flatMap((doc) =>
-      artifactStoragePaths(doc.data().artifacts)
+  const mockupJobDocs = filterProjectDocuments(
+    mockupJobs.docs,
+    input.projectId
+  );
+  const storagePaths = projectStoragePathsFromDocuments(
+    [...artworkDocs, ...exportJobDocs, ...mockupJobDocs].map((doc) =>
+      doc.data()
     )
-  ].filter(
-    (path): path is string => typeof path === "string" && path.length > 0
   );
 
   await Promise.all(
@@ -162,7 +163,12 @@ export async function deleteFirestoreProjectForUser(input: {
 
   const batch = db.batch();
 
-  for (const doc of [...artworkDocs, ...generationJobDocs, ...exportJobDocs]) {
+  for (const doc of [
+    ...artworkDocs,
+    ...generationJobDocs,
+    ...exportJobDocs,
+    ...mockupJobDocs
+  ]) {
     batch.delete(doc.ref);
   }
 
@@ -283,6 +289,27 @@ function projectToCard(project: FirestoreProject): ProjectCard {
   };
 }
 
+export function projectStoragePathsFromDocuments(
+  documents: FirebaseFirestore.DocumentData[]
+) {
+  return [
+    ...new Set(
+      documents
+        .flatMap((data) => [
+          nullableString(data.sourceStoragePath),
+          nullableString(data.previewStoragePath),
+          ...artworkDimensionPreviewStoragePaths(data.dimensionPreviews),
+          ...artifactStoragePaths(data.artifacts),
+          ...artifactStoragePaths(data.images)
+        ])
+        .filter(
+          (path): path is string =>
+            typeof path === "string" && path.length > 0
+        )
+    )
+  ];
+}
+
 function filterProjectDocuments(
   docs: FirebaseFirestore.QueryDocumentSnapshot[],
   projectId: string
@@ -312,12 +339,19 @@ function artworkDimensionPreviewStoragePaths(value: unknown) {
   }
 
   return value
-    .map((preview) =>
+    .flatMap((preview) =>
       typeof preview === "object" &&
-      preview !== null &&
-      typeof (preview as { previewStoragePath?: unknown })
-        .previewStoragePath === "string"
-        ? (preview as { previewStoragePath: string }).previewStoragePath
+      preview !== null
+        ? [
+            typeof (preview as { sourceStoragePath?: unknown })
+              .sourceStoragePath === "string"
+              ? (preview as { sourceStoragePath: string }).sourceStoragePath
+              : null,
+            typeof (preview as { previewStoragePath?: unknown })
+              .previewStoragePath === "string"
+              ? (preview as { previewStoragePath: string }).previewStoragePath
+              : null
+          ]
         : null
     )
     .filter((path): path is string => typeof path === "string");

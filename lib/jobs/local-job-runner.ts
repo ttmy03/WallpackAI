@@ -1,8 +1,10 @@
 import type {
   EnqueueExportJobResult,
+  EnqueueMockupJobResult,
   EnqueuedGenerationJob,
   ExportJobInput,
   GenerationJobInput,
+  MockupJobInput,
   JobRunner
 } from "@/lib/jobs/job-runner";
 import {
@@ -13,6 +15,10 @@ import {
   enqueueLocalGenerationJob,
   processGenerationJob
 } from "@/lib/jobs/local-generation-runner";
+import {
+  enqueueLocalMockupJob,
+  processMockupJob
+} from "@/lib/jobs/local-mockup-runner";
 
 export class LocalJobRunner implements JobRunner {
   async enqueueGeneration(
@@ -33,6 +39,16 @@ export class LocalJobRunner implements JobRunner {
 
     if (queued.ok) {
       scheduleLocalJob(() => processExportJob(queued.job.jobId));
+    }
+
+    return queued;
+  }
+
+  async enqueueMockup(input: MockupJobInput): Promise<EnqueueMockupJobResult> {
+    const queued = await enqueueLocalMockupJob(input);
+
+    if (queued.ok) {
+      scheduleLocalJob(() => processMockupJob(queued.job.jobId));
     }
 
     return queued;

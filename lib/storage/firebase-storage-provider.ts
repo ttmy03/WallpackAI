@@ -1,6 +1,7 @@
 import { getFirebaseStorage } from "@/lib/firebase/admin";
 import type {
   DownloadedObject,
+  ListedObject,
   SignedDownloadUrl,
   StorageProvider,
   StoredObject,
@@ -29,6 +30,29 @@ export class FirebaseStorageProvider implements StorageProvider {
       contentType: input.contentType,
       bytes: bytes.byteLength
     };
+  }
+
+  async listObjects(prefix: string): Promise<ListedObject[]> {
+    const bucket = getFirebaseStorage().bucket();
+    const [files] = await bucket.getFiles({ prefix });
+
+    return Promise.all(
+      files.map(async (file) => {
+        const [metadata] = await file.getMetadata();
+
+        return {
+          path: file.name,
+          bucket: bucket.name,
+          contentType:
+            typeof metadata.contentType === "string"
+              ? metadata.contentType
+              : "application/octet-stream",
+          bytes: numberFromMetadataSize(metadata.size),
+          updatedAt:
+            typeof metadata.updated === "string" ? metadata.updated : undefined
+        };
+      })
+    );
   }
 
   async downloadObject(path: string): Promise<DownloadedObject> {
@@ -73,4 +97,10 @@ export class FirebaseStorageProvider implements StorageProvider {
 function readPositiveIntegerEnv(name: string, fallback: number) {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function numberFromMetadataSize(value: unknown) {
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }

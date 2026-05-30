@@ -25,6 +25,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /mockupJobs/{jobId} {
+      allow read: if ownsResource();
+      allow write: if false;
+    }
+
     match /artworks/{artworkId} {
       allow read: if ownsResource();
       allow write: if false;

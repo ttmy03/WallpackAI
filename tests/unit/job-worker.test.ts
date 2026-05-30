@@ -45,6 +45,16 @@ const mocks = vi.hoisted(() => {
         contentType: object.contentType
       };
     }),
+    listObjects: vi.fn(async (prefix: string) =>
+      [...uploads.entries()]
+        .filter(([path]) => path.startsWith(prefix))
+        .map(([path, object]) => ({
+          path,
+          bucket: "test-bucket",
+          contentType: object.contentType,
+          bytes: object.bytes.byteLength
+        }))
+    ),
     createSignedDownloadUrl: vi.fn(async (path: string) => ({
       url: `https://signed.example/${encodeURIComponent(path)}`,
       expiresAt: new Date("2026-05-29T12:00:00.000Z")

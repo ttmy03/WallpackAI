@@ -5,6 +5,7 @@ import type {
   GenerationJobView
 } from "@/lib/jobs/generation-types";
 import type { ExportJobView } from "@/lib/jobs/export-types";
+import type { MockupJobView } from "@/lib/jobs/mockup-types";
 
 export type DashboardSummary = {
   plan: PlanStatus;
@@ -21,6 +22,9 @@ export type ProjectDetail = {
   latestGenerationJob: GenerationJobView | null;
   exportJobs: ExportJobView[];
   latestExportJob: ExportJobView | null;
+  mockupJobs: MockupJobView[];
+  latestMockupJob: MockupJobView | null;
+  latestMockupPackJob: MockupJobView | null;
   artworks: GeneratedArtworkPreview[];
 };
 
@@ -55,5 +59,11 @@ export type RetryGenerationResponse = {
 export type ExportJobResponse = {
   jobId: string;
   status: ExportJobView["status"];
+  projectId: string;
+};
+
+export type MockupJobResponse = {
+  jobId: string;
+  status: MockupJobView["status"];
   projectId: string;
 };
